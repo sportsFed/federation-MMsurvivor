@@ -1,0 +1,14 @@
+name: 5-Minute-Scoring-Update
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Update API
+        run: |
+          curl -X GET "https://federation-survivor.vercel.app/api/cron/update-games" \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
