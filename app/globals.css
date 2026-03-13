@@ -62,3 +62,17 @@ button, .btn-red {
   max-width: 400px;
   margin: 20px auto;
 }
+
+input {
+  background-color: #1e293b !important; /* Dark Slate */
+  border: 1px solid #334155 !important; /* Muted border */
+  color: white !important;
+  padding: 12px !important;
+  border-radius: 8px !important;
+  width: 100% !important;
+  margin-bottom: 10px !important;
+}
+
+input::placeholder {
+  color: #94a3b8 !important;
+}
