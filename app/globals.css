@@ -2,23 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 1. Global Theme Variables */
 :root {
-  --bg-dark: #0f172a;      /* Deep Midnight Navy */
-  --bg-card: #1e293b;      /* Lighter Navy for Cards */
-  --fed-red: #dc2626;      /* Vibrant Brand Red */
-  --accent-blue: #38bdf8;  /* For progress bars and highlights */
+  --bg-midnight: #0b1120;
+  --bg-card: rgba(30, 41, 59, 0.7);
+  --fed-red: #dc2626;
+  --border-slate: rgba(255, 255, 255, 0.1);
 }
 
+/* 2. Global Resets for the "Sleek" look */
 body {
-  background-color: var(--bg-dark);
-  color: #f8fafc;
-  font-family: var(--font-bebas), sans-serif;
+  @apply bg-[#0b1120] text-slate-100 font-sans antialiased;
+  background-image: radial-gradient(circle at top right, #1e293b, #0b1120);
+  background-attachment: fixed;
 }
 
-/* Glassmorphism Effect */
-.glass-panel {
-  background: rgba(30, 41, 59, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+/* 3. The "Mass Update" Classes */
+@layer components {
+  /* Apply this to every main container for instant Glassmorphism */
+  .glass-panel {
+    @apply backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl bg-slate-900/60;
+  }
+
+  /* Force Bebas Neue on all headers automatically */
+  h1, h2, h3, .font-bebas {
+    font-family: var(--font-bebas), sans-serif;
+    @apply uppercase tracking-tight italic;
+  }
+
+  /* Style every button to match the Bowl Pick'em red */
+  button.btn-primary, .bg-fedRed {
+    @apply bg-red-600 hover:bg-red-700 text-white transition-all duration-300 shadow-lg shadow-red-900/20;
+  }
+
+  /* Style all input fields globally */
+  input {
+    @apply bg-slate-950/50 border border-slate-800 rounded-lg p-3 focus:border-red-600 outline-none transition-colors;
+  }
 }
