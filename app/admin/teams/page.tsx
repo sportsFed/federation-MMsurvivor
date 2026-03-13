@@ -9,6 +9,22 @@ export default function AdminTeams() {
   const [regSeed, setRegSeed] = useState('');
   const [natSeed, setNatSeed] = useState('');
   const [message, setMessage] = useState('');
+  const [region, setRegion] = useState('East');
+
+// Inside your return() form:
+<div>
+  <label className="block text-sm font-medium">Tournament Region</label>
+  <select 
+    value={region} 
+    onChange={(e) => setRegion(e.target.value)}
+    className="w-full border p-2 rounded"
+  >
+    <option value="East">East</option>
+    <option value="West">West</option>
+    <option value="South">South</option>
+    <option value="Midwest">Midwest</option>
+  </select>
+</div>
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,3 +67,4 @@ export default function AdminTeams() {
     </div>
   );
 }
+
