@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Bowl Pick'em Midnight Palette */
+  --bg-dark: #0f172a;
+  --bg-card: #1e293b;
+  --fed-red: #dc2626;
+  --text-primary: #f8fafc;
+  --text-muted: #94a3b8;
+  --border-glass: rgba(255, 255, 255, 0.1);
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+}
+
+/* Sleek Dashboard Panel */
+.glass-panel {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass);
+  border-radius: 1rem;
+}
+
+/* Nav Link Active State (as seen in image_d79359.png) */
+.nav-link-active {
+  color: var(--fed-red);
+  border-bottom: 2px solid var(--fed-red);
+}
