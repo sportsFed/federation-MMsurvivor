@@ -3,65 +3,46 @@ import { useState } from 'react';
 import { auth, db } from '@/lib/firebase/clientApp';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [passcode, setPasscode] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
-  const router = useRouter();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const fullPass = `${passcode}fed26`; // Meets Firebase 6-char minimum
-
-    try {
-      if (isRegistering) {
-        const res = await createUserWithEmailAndPassword(auth, email, fullPass);
-        // Create the official entry with the First and Last name
-        await setDoc(doc(db, 'entries', res.user.uid), {
-          displayName: `${firstName} ${lastName}`,
-          email,
-          isAdmin: email === 'thesportsfederation@gmail.com',
-          isEliminated: false,
-          totalPoints: 0,
-          survivorPicks: [],
-          createdAt: new Date().toISOString()
-        });
-      } else {
-        await signInWithEmailAndPassword(auth, email, fullPass);
-      }
-      router.push('/my-picks');
-    } catch (err) { 
-      alert("Error: Check your credentials or ensure the passcode is 4 digits."); 
-    }
-  };
+  const [isRegistering, setIsRegistering] = useState(true);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 p-4">
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm">
-        <h1 className="text-2xl font-bold mb-6 text-center text-blue-900">Federation Entry</h1>
-        
-        {isRegistering && (
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <input type="text" placeholder="First Name" onChange={e => setFirstName(e.target.value)} className="border p-2 rounded" required />
-            <input type="text" placeholder="Last Name" onChange={e => setLastName(e.target.value)} className="border p-2 rounded" required />
-          </div>
-        )}
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4">
+      <div className="glass-panel max-w-md w-full p-8 shadow-2xl">
+        <div className="flex flex-col items-center mb-8">
+          <img src="/Fed-Logo.png" alt="Logo" className="w-16 h-16 mb-4" />
+          <h1 className="font-bebas text-4xl tracking-tight uppercase italic">MM Survivor 25-26</h1>
+          <p className="text-slate-400 text-xs uppercase tracking-widest">The Federation</p>
+        </div>
 
-        <input type="email" placeholder="Email Address" onChange={e => setEmail(e.target.value)} className="w-full border p-2 mb-4 rounded" required />
-        <input type="password" placeholder="4-Digit Passcode" maxLength={4} onChange={e => setPasscode(e.target.value)} className="w-full border p-2 mb-6 rounded" required />
-        
-        <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded font-bold hover:bg-blue-700 transition">
-          {isRegistering ? 'Register & Enter League' : 'Sign In'}
-        </button>
-        
-        <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="w-auto mx-auto block text-xs mt-6 text-gray-500 hover:text-blue-600">
-          {isRegistering ? 'Already have an entry? Sign In' : 'New Entrant? Register Here'}
-        </button>
-      </form>
+        {/* Tab Switcher */}
+        <div className="flex border-b border-slate-700 mb-6">
+          <button 
+            className={`flex-1 pb-2 font-bebas text-lg ${isRegistering ? 'text-fedRed border-b-2 border-fedRed' : 'text-slate-500'}`}
+            onClick={() => setIsRegistering(true)}
+          >New Entry</button>
+          <button 
+            className={`flex-1 pb-2 font-bebas text-lg ${!isRegistering ? 'text-fedRed border-b-2 border-fedRed' : 'text-slate-500'}`}
+            onClick={() => setIsRegistering(false)}
+          >Returning User</button>
+        </div>
+
+        <form className="space-y-4">
+          {isRegistering && (
+            <div className="grid grid-cols-2 gap-3">
+              <input type="text" placeholder="First Name" className="bg-slate-900/50 border border-slate-700 p-3 rounded focus:outline-none focus:border-fedRed" />
+              <input type="text" placeholder="Last Name" className="bg-slate-900/50 border border-slate-700 p-3 rounded focus:outline-none focus:border-fedRed" />
+            </div>
+          )}
+          <input type="email" placeholder="Email Address" className="w-full bg-slate-900/50 border border-slate-700 p-3 rounded focus:outline-none focus:border-fedRed" />
+          <input type="password" placeholder="Create 4-Digit PIN" className="w-full bg-slate-900/50 border border-slate-700 p-3 rounded text-center tracking-[1em] font-mono" maxLength={4} />
+          
+          <button className="w-full bg-fedRed hover:bg-red-700 text-white font-bebas text-2xl py-3 rounded-lg shadow-lg shadow-red-900/20 transition-all uppercase">
+            {isRegistering ? 'Create Entry' : 'Sign In'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
