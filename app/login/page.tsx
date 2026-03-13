@@ -84,10 +84,13 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-8 text-center">
-          <button className="text-[10px] uppercase font-bold text-slate-600 hover:text-red-600 tracking-widest transition">Commissioner Login</button>
+         <div className="mt-8 text-center">
+          <Link 
+            href="/admin/entries" 
+            className="text-[10px] uppercase font-bold text-slate-600 hover:text-red-600 tracking-widest transition"
+          >
+            Commissioner Login
+          </Link>
         </div>
-      </div>
-    </div>
   );
 }
