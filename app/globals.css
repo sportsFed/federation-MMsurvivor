@@ -31,3 +31,9 @@ body {
   font-family: 'Georgia', serif; /* A web-safe stand-in for the script logo look */
   font-style: italic;
 }
+
+@layer base {
+  .font-bebas {
+    font-family: var(--font-bebas), sans-serif;
+  }
+}
