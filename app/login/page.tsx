@@ -24,6 +24,7 @@ export default function LoginPage() {
         await setDoc(doc(db, 'entries', res.user.uid), {
           displayName: `${firstName} ${lastName}`,
           email,
+          pin: passcode, // Add this line so the commissioner can see the PIN in the admin table
           isAdmin: email === 'thesportsfederation@gmail.com',
           isEliminated: false,
           totalPoints: 0
