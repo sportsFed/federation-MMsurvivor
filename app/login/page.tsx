@@ -1,52 +1,49 @@
 'use client';
-
+import { useState } from 'react';
 import { auth, db } from '@/lib/firebase/clientApp';
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [passcode, setPasscode] = useState(''); // 4-digit number
+  const [isRegistering, setIsRegistering] = useState(false);
   const router = useRouter();
 
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fullPass = `${passcode}fed26`; // Meets 6-char minimum
+
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      // Check if this is a new entrant and set up their record
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          name: user.displayName,
-          email: user.email,
-          isAdmin: user.email === 'thesportsfederation@gmail.com',
+      if (isRegistering) {
+        const res = await createUserWithEmailAndPassword(auth, email, fullPass);
+        await setDoc(doc(db, 'entries', res.user.uid), {
+          email,
+          isAdmin: email === 'thesportsfederation@gmail.com',
           isEliminated: false,
           totalPoints: 0
         });
+      } else {
+        await signInWithEmailAndPassword(auth, email, fullPass);
       }
-
       router.push('/my-picks');
-    } catch (error) {
-      console.error("Login failed:", error);
-    }
+    } catch (err) { alert("Check email/passcode or register new entry."); }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-10 rounded-xl shadow-lg text-center max-w-md w-full">
-        <h1 className="text-3xl font-bold mb-4 text-blue-900">Federation League</h1>
-        <p className="text-gray-600 mb-8 italic">March Madness Survivor 2026</p>
-        <button 
-          onClick={handleLogin}
-          className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 p-3 rounded-lg hover:bg-gray-50 transition font-semibold"
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6" />
-          Sign in with Google
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 p-4">
+      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm">
+        <h1 className="text-2xl font-bold mb-6 text-center">Federation Entry</h1>
+        <input type="email" placeholder="Email Address" onChange={e => setEmail(e.target.value)} className="w-full border p-2 mb-4 rounded" required />
+        <input type="password" placeholder="4-Digit Passcode" maxLength={4} onChange={e => setPasscode(e.target.value)} className="w-full border p-2 mb-6 rounded" required />
+        <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded font-bold">
+          {isRegistering ? 'Create Entry' : 'Sign In'}
         </button>
-      </div>
+        <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="w-full text-sm mt-4 text-gray-500 underline">
+          {isRegistering ? 'Already have an entry? Sign In' : 'New Entrant? Register Here'}
+        </button>
+      </form>
     </div>
   );
 }
