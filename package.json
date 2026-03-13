@@ -17,7 +17,7 @@
     "recharts": "^2.12.0",
     "resend": "^3.1.0",
     "date-fns": "^3.3.1",
-    "lucide-react": "^0.344.0",
+    "lucide-react": "latest",
     "@tailwindcss/postcss": "^4.0.0",
     "tailwindcss": "^4.0.0"
   },
@@ -27,5 +27,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "postcss": "^8"
+  },
+  "overrides": {
+    "lucide-react": {
+      "react": "^19.0.0"
+    }
   }
 }
