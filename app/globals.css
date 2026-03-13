@@ -1,19 +1,8 @@
-@import "tailwindcss";
-
-@theme {
-  --color-fed-red: #dc2626;
-  --color-midnight: #0b1120;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 body {
-  background-color: #0b1120; /* Fixed hex for midnight navy */
-  color: #ffffff;
-  font-family: var(--font-bebas), sans-serif;
-}
-
-.glass-panel {
-  background: rgba(30, 41, 59, 0.8);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 1rem;
+  background-color: #0b1120;
+  color: white;
 }
