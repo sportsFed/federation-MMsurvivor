@@ -3,37 +3,22 @@
 @tailwind utilities;
 
 :root {
-  --fed-red: #FF0000;
-  --fed-black: #000000;
-  --background: #f8fafc;
-  --foreground: #0f172a;
-}
-
-/* Dark Mode logic */
-.dark {
-  --background: #0f172a;
-  --foreground: #f8fafc;
+  --bg-dark: #0f172a;      /* Deep Midnight Navy */
+  --bg-card: #1e293b;      /* Lighter Navy for Cards */
+  --fed-red: #dc2626;      /* Vibrant Brand Red */
+  --accent-blue: #38bdf8;  /* For progress bars and highlights */
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-dark);
+  color: #f8fafc;
+  font-family: var(--font-bebas), sans-serif;
 }
 
-/* Custom Federation Branding Classes */
-.bg-fedRed { background-color: var(--fed-red); }
-.text-fedRed { color: var(--fed-red); }
-.bg-fedBlack { background-color: var(--fed-black); }
-.border-fedRed { border-color: var(--fed-red); }
-
-.font-brand {
-  font-family: 'Georgia', serif; /* A web-safe stand-in for the script logo look */
-  font-style: italic;
-}
-
-@layer base {
-  .font-bebas {
-    font-family: var(--font-bebas), sans-serif;
-  }
+/* Glassmorphism Effect */
+.glass-panel {
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
 }
