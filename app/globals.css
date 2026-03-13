@@ -1,42 +1,65 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* 1. Global Theme Variables */
-:root {
-  --bg-midnight: #0b1120;
-  --bg-card: rgba(30, 41, 59, 0.7);
-  --fed-red: #dc2626;
-  --border-slate: rgba(255, 255, 255, 0.1);
+@theme {
+  --color-fed-red: #dc2626;
+  --color-midnight: #0b1120;
+  --color-glass-card: rgba(30, 41, 59, 0.7);
 }
 
-/* 2. Global Resets for the "Sleek" look */
-body {
-  @apply bg-[#0b1120] text-slate-100 font-sans antialiased;
-  background-image: radial-gradient(circle at top right, #1e293b, #0b1120);
-  background-attachment: fixed;
-}
-
-/* 3. The "Mass Update" Classes */
-@layer components {
-  /* Apply this to every main container for instant Glassmorphism */
-  .glass-panel {
-    @apply backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl bg-slate-900/60;
-  }
-
-  /* Force Bebas Neue on all headers automatically */
-  h1, h2, h3, .font-bebas {
+/* Global Styles */
+@layer base {
+  body {
+    background-color: var(--color-midnight);
+    background-image: radial-gradient(circle at top right, #1e293b, #0b1120);
+    background-attachment: fixed;
+    color: #f8fafc; /* Replaces text-slate-100 to avoid apply errors */
     font-family: var(--font-bebas), sans-serif;
-    @apply uppercase tracking-tight italic;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Mass Update Utility Classes */
+@layer components {
+  .glass-panel {
+    background: var(--color-glass-card);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   }
 
-  /* Style every button to match the Bowl Pick'em red */
-  button.btn-primary, .bg-fedRed {
-    @apply bg-red-600 hover:bg-red-700 text-white transition-all duration-300 shadow-lg shadow-red-900/20;
+  .font-bebas {
+    font-family: var(--font-bebas), sans-serif;
+    text-transform: uppercase;
+    letter-spacing: -0.025em;
+    font-style: italic;
   }
 
-  /* Style all input fields globally */
+  /* Style all input fields globally for that sleek look */
   input {
-    @apply bg-slate-950/50 border border-slate-800 rounded-lg p-3 focus:border-red-600 outline-none transition-colors;
+    background-color: rgba(2, 6, 23, 0.5);
+    border: 1px solid rgba(30, 41, 59, 1);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    outline: none;
+    transition: border-color 0.3s ease;
+  }
+
+  input:focus {
+    border-color: var(--color-fed-red);
+  }
+
+  .btn-fed {
+    background-color: var(--color-fed-red);
+    color: white;
+    transition: all 0.3s ease;
+    box-shadow: 0 10px 15px -3px rgba(153, 27, 27, 0.2);
+    text-transform: uppercase;
+    font-family: var(--font-bebas), sans-serif;
+  }
+
+  .btn-fed:hover {
+    background-color: #b91c1c;
+    transform: translateY(-1px);
   }
 }
