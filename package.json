@@ -18,6 +18,8 @@
     "resend": "^3.1.0",
     "date-fns": "^3.3.1",
     "lucide-react": "latest"
+    "@tailwindcss/postcss": "^4.0.0",
+    "tailwindcss": "^4.0.0"
   },
   "devDependencies": {
     "typescript": "^5",
