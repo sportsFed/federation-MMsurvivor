@@ -1,31 +1,31 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase/clientApp';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/adminApp'; // Ensure you use Admin SDK for server-side
+import { auth } from '@/lib/firebase/adminApp';
 
 export async function POST(request: Request) {
   try {
-    const { uid, email, displayName } = await request.json();
+    const { email, pin, displayName, uid } = await request.json();
 
-    if (!uid) return NextResponse.json({ error: 'No UID provided' }, { status: 400 });
-
-    const userRef = doc(db, 'entries', uid);
-    const userSnap = await getDoc(userRef);
-
-    // Only create a new entry if they don't exist yet
-    if (!userSnap.exists()) {
-      await setDoc(userRef, {
-        name: displayName,
-        email: email,
-        isEliminated: false,
-        totalPoints: 0,
-        survivorPicks: [],
-        finalFourPicks: { f1: '', f2: '', f3: '', f4: '', champ: '' },
-        isAdmin: email === 'thesportsfederation@gmail.com'
-      });
+    // 1. Verify basic data exists
+    if (!email || !pin || !displayName) {
+      return NextResponse.json({ error: 'Missing registration data' }, { status: 400 });
     }
 
+    // 2. Save the entrant to Firestore
+    // We store the 'pin' as a plain string so you can see it in your Admin Portal
+    await db.collection('entries').doc(uid).set({
+      email,
+      displayName,
+      pin, 
+      isEliminated: false,
+      totalPoints: 0,
+      isAdmin: email === 'thesportsfederation@gmail.com',
+      createdAt: new Date().toISOString()
+    });
+
     return NextResponse.json({ success: true });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: 'Registration failed' }, { status: 500 });
+  } catch (error: any) {
+    console.error('Registration Error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
