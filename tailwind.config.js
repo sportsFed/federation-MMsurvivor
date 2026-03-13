@@ -7,7 +7,15 @@ module.exports = {
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        midnight: '#0b1120',
+        fedRed: '#dc2626',
+      },
+      fontFamily: {
+        bebas: ['var(--font-bebas)', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 }
