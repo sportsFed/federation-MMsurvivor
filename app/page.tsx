@@ -11,13 +11,12 @@ export default function Home() {
         style={{ width: '250px', marginBottom: '20px' }} 
       />
       
-      // Inside your return statement:
-<h1 style={{ color: 'white', fontSize: '4rem', fontFamily: 'var(--font-bebas)' }}>
-  MARCH MADNESS SURVIVOR
-</h1>
-<p style={{ color: '#dc2626', letterSpacing: '0.4em', fontSize: '1.5rem' }}>
-  2026
-</p>
+      <h1 style={{ color: 'white', fontSize: '4rem', fontFamily: 'var(--font-bebas)' }}>
+        MARCH MADNESS SURVIVOR
+      </h1>
+      <p style={{ color: '#dc2626', letterSpacing: '0.4em', fontSize: '1.5rem' }}>
+        2026
+      </p>
       
       <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
         <Link href="/login" style={{ backgroundColor: '#dc2626', color: 'white', padding: '15px 40px', borderRadius: '12px', textDecoration: 'none', fontSize: '1.5rem', fontWeight: 'bold' }}>
