@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { auth, db } from '@/lib/firebase/clientApp';
+import { auth } from '@/lib/firebase/clientApp';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -21,20 +20,36 @@ export default function LoginPage() {
     try {
       if (view === 'register') {
         const res = await createUserWithEmailAndPassword(auth, email, fullPass);
-        await setDoc(doc(db, 'entries', res.user.uid), {
-          displayName: `${firstName} ${lastName}`,
-          email,
-          pin: passcode,
-          isAdmin: email === 'thesportsfederation@gmail.com',
-          isEliminated: false,
-          totalPoints: 0
+        const uid = res.user.uid;
+
+        const apiRes = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            pin: passcode,
+            displayName: `${firstName} ${lastName}`,
+            uid
+          })
         });
+
+        if (!apiRes.ok) {
+          let errorMessage = 'Failed to save registration data';
+          try {
+            const errData = await apiRes.json();
+            errorMessage = errData.error || errorMessage;
+          } catch {
+            // Response was not JSON, use default message
+          }
+          throw new Error(errorMessage);
+        }
       } else {
         await signInWithEmailAndPassword(auth, email, fullPass);
       }
       router.push('/my-picks');
     } catch (err) {
-      alert("Error: Please check your email and 4-digit PIN.");
+      const message = err instanceof Error ? err.message : 'Please check your email and 4-digit PIN.';
+      alert(`Error: ${message}`);
     }
   };
 
