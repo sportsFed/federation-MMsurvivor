@@ -25,7 +25,7 @@ export default function MyPicksPage() {
     });
   }, []);
 
-  if (loading) return <div className="p-12 text-center font-bebas text-2xl tracking-widest text-slate-500">Syncing Tournament Data...</div>;
+  if (loading) return <div className="p-12 text-center font-bebas text-2xl tracking-widest text-slate-500">Check back soon</div>;
 
   return (
     <div className="max-w-4xl mx-auto pb-20">
