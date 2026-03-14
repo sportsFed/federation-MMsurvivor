@@ -1,9 +1,8 @@
-# .gitignore
-
-# Environment variables - NEVER COMMIT THESE
+node_modules/
+.next/
+dist/
+.DS_Store
+# Environment variables (NEVER upload these to GitHub)
 .env.local
-.env.local.example
 .env
-*.json  # Optional - prevents accidental JSON file commits
-
-# ... rest of your gitignore
+.env.*.local
