@@ -10,12 +10,21 @@ export default function AdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput === 'chone1234') {
-      setIsAuthorized(true);
-    } else {
-      alert('Incorrect Commissioner Password');
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordInput }),
+      });
+      if (res.ok) {
+        setIsAuthorized(true);
+      } else {
+        alert('Incorrect Commissioner Password');
+      }
+    } catch {
+      alert('Network error verifying password.');
     }
   };
 
