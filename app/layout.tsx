@@ -1,5 +1,6 @@
 import './globals.css';
 import { Bebas_Neue } from 'next/font/google';
+import AppShell from '@/components/AppShell';
 
 const bebas = Bebas_Neue({ 
   weight: '400',
@@ -21,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         margin: 0, 
         fontFamily: 'var(--font-bebas), sans-serif' 
       }}>
-        {children}
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

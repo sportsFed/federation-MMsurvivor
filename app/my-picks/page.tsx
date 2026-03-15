@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 export default function MyPicksPage() {
+  const router = useRouter();
   const [games, setGames] = useState<any[]>([]);
   const [userEntry, setUserEntry] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export default function MyPicksPage() {
   };
 
   useEffect(() => {
-    onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUserId(user.uid);
         const entryRef = doc(db, 'entries', user.uid);
@@ -29,10 +31,13 @@ export default function MyPicksPage() {
 
         const gamesSnap = await getDocs(collection(db, 'games'));
         setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } else {
+        router.push('/login');
       }
       setLoading(false);
     });
-  }, []);
+    return () => unsubscribe();
+  }, [router]);
 
   const alreadyPickedTeams: string[] = userEntry?.survivorPicks?.map((p: any) => p.team) ?? [];
 
@@ -73,13 +78,33 @@ export default function MyPicksPage() {
     setSubmitting(false);
   };
 
-  if (loading) return <div className="p-12 text-center font-bebas text-2xl tracking-widest text-slate-500">Syncing Tournament Data...</div>;
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto pb-20 animate-pulse">
+        <div className="mb-10 px-2">
+          <div className="h-12 bg-slate-700/50 rounded w-48 mb-2" />
+          <div className="h-5 bg-slate-700/50 rounded w-32" />
+        </div>
+        <div className="glass-panel p-6 mb-8 h-24 bg-slate-700/50" />
+        <div className="space-y-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="glass-panel p-5 h-20 bg-slate-700/50" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto pb-20">
       <header className="mb-10 flex justify-between items-end px-2">
         <div>
           <h1 className="font-bebas text-5xl tracking-tighter italic text-white uppercase">My Picks</h1>
+          {userEntry?.displayName && (
+            <p className="text-fedRed font-bebas text-xl tracking-widest uppercase">
+              Welcome, {userEntry.displayName}
+            </p>
+          )}
           <p className="text-slate-400 font-bebas text-lg tracking-widest uppercase">The Federation</p>
         </div>
         <div className="text-right">
@@ -131,7 +156,7 @@ export default function MyPicksPage() {
           <div className="glass-panel p-10 text-center text-slate-500 italic">No live games found. Selections unlock Sunday.</div>
         ) : (
           games.map((game) => (
-            <div key={game.id} className="glass-panel p-5 flex items-center justify-between border-l-4 border-l-fedRed transition-all hover:translate-x-1">
+            <div key={game.id} className="glass-panel p-5 flex items-center justify-between border-l-4 border-l-fedRed transition-all active:scale-[0.98]">
               <div className="flex flex-col">
                 <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">{game.region} — {game.round || 'Tournament Game'}</span>
                 <span className="font-bebas text-2xl text-white tracking-wide uppercase">
@@ -157,7 +182,7 @@ export default function MyPicksPage() {
       {/* Pick Modal */}
       {pickModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0b1120] border border-white/20 rounded-2xl p-8 max-w-sm w-full text-center">
+          <div className="bg-midnight border border-white/20 rounded-2xl p-8 w-full max-w-sm sm:max-w-md text-center">
             <h3 className="font-bebas text-3xl text-white mb-2 tracking-widest">Make Your Pick</h3>
             <p className="text-slate-500 text-sm mb-6">{pickModal.game.region} — {pickModal.game.round}</p>
             <div className="flex flex-col gap-4">

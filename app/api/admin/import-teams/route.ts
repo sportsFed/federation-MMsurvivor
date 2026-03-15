@@ -82,7 +82,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    if (body.adminPassword !== (process.env.ADMIN_PASSWORD ?? 'chone1234')) {
+    if (!process.env.ADMIN_PASSWORD || body.adminPassword !== process.env.ADMIN_PASSWORD) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
