@@ -5,8 +5,12 @@ export const SESSION_COOKIE = 'admin_session';
 export const SESSION_DURATION = 60 * 60 * 24; // 24 hours in seconds
 
 async function getJwtSecret(): Promise<Uint8Array> {
+  // JWT_SECRET should be an independent secret key set in the deployment environment.
+  // Falling back to ADMIN_PASSWORD is only a convenience for environments where
+  // JWT_SECRET has not been configured yet; setting JWT_SECRET separately is recommended
+  // so that session tokens remain valid independent of password changes.
   const secret = process.env.JWT_SECRET ?? process.env.ADMIN_PASSWORD;
-  if (!secret) throw new Error('No JWT secret configured');
+  if (!secret) throw new Error('No JWT secret configured. Set JWT_SECRET or ADMIN_PASSWORD environment variable.');
   return new TextEncoder().encode(secret);
 }
 
