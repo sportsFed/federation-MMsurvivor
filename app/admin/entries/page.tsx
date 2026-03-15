@@ -18,14 +18,27 @@ export default function AdminEntriesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState('');
   const [showTestEntries, setShowTestEntries] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   const fetchEntries = async () => {
     setLoading(true);
-    const q = query(collection(db, 'entries'), orderBy('displayName', 'asc'));
-    const querySnapshot = await getDocs(q);
-    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    setEntries(data);
-    setLoading(false);
+    setFetchError('');
+    try {
+      const q = query(collection(db, 'entries'), orderBy('displayName', 'asc'));
+      const querySnapshot = await getDocs(q);
+      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setEntries(data);
+    } catch {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'entries'));
+        const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setEntries(data);
+      } catch (fallbackErr: any) {
+        setFetchError(`Failed to load entries: ${fallbackErr.message}`);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -127,6 +140,12 @@ export default function AdminEntriesPage() {
         {actionMessage && (
           <div className="mb-4 p-3 rounded bg-green-900/40 border border-green-500/50 text-green-400 text-sm">
             {actionMessage}
+          </div>
+        )}
+
+        {fetchError && (
+          <div className="mb-4 p-3 rounded bg-red-900/40 border border-red-500/50 text-red-400 text-sm">
+            {fetchError}
           </div>
         )}
 

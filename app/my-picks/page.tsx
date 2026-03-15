@@ -25,12 +25,16 @@ export default function MyPicksPage() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUserId(user.uid);
-        const entryRef = doc(db, 'entries', user.uid);
-        const entrySnap = await getDoc(entryRef);
-        if (entrySnap.exists()) setUserEntry(entrySnap.data());
+        try {
+          const entryRef = doc(db, 'entries', user.uid);
+          const entrySnap = await getDoc(entryRef);
+          if (entrySnap.exists()) setUserEntry(entrySnap.data());
 
-        const gamesSnap = await getDocs(collection(db, 'games'));
-        setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          const gamesSnap = await getDocs(collection(db, 'games'));
+          setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        } catch (err: any) {
+          showMessage(`Error loading data: ${err.message}`);
+        }
       } else {
         router.push('/login');
       }
@@ -153,7 +157,14 @@ export default function MyPicksPage() {
       <div className="space-y-4">
         <h2 className="font-bebas text-2xl tracking-wide text-slate-300 mb-4 px-2 uppercase">Upcoming Games</h2>
         {games.length === 0 ? (
-          <div className="glass-panel p-10 text-center text-slate-500 italic">No live games found. Selections unlock Sunday.</div>
+          <div className="glass-panel p-10 text-center border border-white/10">
+            <div className="text-5xl mb-4">🏀</div>
+            <h3 className="font-bebas text-3xl text-white tracking-widest mb-2">You're Registered!</h3>
+            <p className="text-slate-400 text-sm mb-3">
+              The bracket hasn't been set yet. Once the tournament field is announced and the bracket is seeded, your matchups and pick options will appear here automatically.
+            </p>
+            <p className="text-slate-500 text-xs uppercase tracking-widest font-bold">Check back after Selection Sunday!</p>
+          </div>
         ) : (
           games.map((game) => (
             <div key={game.id} className="glass-panel p-5 flex items-center justify-between border-l-4 border-l-fedRed transition-all active:scale-[0.98]">

@@ -24,6 +24,7 @@ export default function StandingsPage() {
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [snapshotError, setSnapshotError] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -40,6 +41,10 @@ export default function StandingsPage() {
         ...doc.data()
       }));
       setEntries(data);
+      setLoading(false);
+    }, (error) => {
+      console.error('Standings snapshot error:', error);
+      setSnapshotError(true);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -62,6 +67,16 @@ export default function StandingsPage() {
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <h1 className="font-bebas text-5xl text-white tracking-widest italic mb-8 uppercase">Federation Leaderboard</h1>
+      {snapshotError ? (
+        <div className="glass-panel p-10 text-center border border-white/10">
+          <p className="text-slate-400 text-sm">Unable to load standings at this time. Please try again later.</p>
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="glass-panel p-10 text-center border border-white/10">
+          <h2 className="font-bebas text-3xl text-white tracking-widest mb-2">Standings Coming Soon</h2>
+          <p className="text-slate-400 text-sm">The leaderboard will populate once the tournament begins and picks are scored. You're in — sit tight!</p>
+        </div>
+      ) : (
       <div className="glass-panel overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -119,6 +134,7 @@ export default function StandingsPage() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
