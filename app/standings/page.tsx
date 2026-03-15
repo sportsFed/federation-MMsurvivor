@@ -50,7 +50,7 @@ export default function StandingsPage() {
                   )}
                 </td>
                 <td className="p-4 text-right font-mono text-lg font-bold text-blue-800">
-                  {entry.totalPoints.toFixed(1)}
+                  {(entry.totalPoints ?? 0).toFixed(1)}
                 </td>
               </tr>
             ))}
