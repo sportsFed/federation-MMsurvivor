@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase/adminApp';
 
-export async function DELETE(request: Request) {
+export async function POST(request: Request) {
   try {
     const { uid, adminPassword } = await request.json();
 
@@ -13,8 +13,17 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Missing uid' }, { status: 400 });
     }
 
-    await db.collection('entries').doc(uid).delete();
-    return NextResponse.json({ success: true });
+    const entryRef = db.collection('entries').doc(uid);
+    const entrySnap = await entryRef.get();
+
+    if (!entrySnap.exists) {
+      return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+    }
+
+    const currentValue = entrySnap.data()?.isEliminated ?? false;
+    await entryRef.update({ isEliminated: !currentValue });
+
+    return NextResponse.json({ success: true, isEliminated: !currentValue });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
