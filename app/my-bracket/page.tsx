@@ -72,7 +72,7 @@ export default function MyBracketPage() {
               ))}
             </ul>
           ) : (
-            <p className="text-slate-500 italic">No survivor picks made yet.</p>
+            <p className="text-slate-500 italic">No survivor picks yet — games will appear on the My Picks page once the bracket is set.</p>
           )}
         </div>
 
@@ -98,7 +98,7 @@ export default function MyBracketPage() {
               </div>
             </div>
           ) : (
-            <p className="text-slate-500 italic text-sm">No pre-tournament picks made yet.</p>
+            <p className="text-slate-500 italic text-sm">No pre-tournament picks yet. Visit the <a href="/final-four" className="text-fedRed hover:underline">Final Four</a> page to lock in your predictions before tip-off!</p>
           )}
         </div>
       </div>
