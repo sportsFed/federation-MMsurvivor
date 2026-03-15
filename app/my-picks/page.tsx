@@ -2,28 +2,73 @@
 
 import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase/clientApp';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
-// This 'export default' fixes the specific build error you are seeing
 export default function MyPicksPage() {
   const [games, setGames] = useState<any[]>([]);
   const [userEntry, setUserEntry] = useState<any>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pickModal, setPickModal] = useState<{ game: any } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [pickMessage, setPickMessage] = useState('');
 
   useEffect(() => {
     onAuthStateChanged(auth, async (user) => {
       if (user) {
+        setUserId(user.uid);
         const entryRef = doc(db, 'entries', user.uid);
         const entrySnap = await getDoc(entryRef);
         if (entrySnap.exists()) setUserEntry(entrySnap.data());
 
         const gamesSnap = await getDocs(collection(db, 'games'));
-        setGames(gamesSnap.docs.map(d => d.data()));
+        setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       }
       setLoading(false);
     });
   }, []);
+
+  const alreadyPickedTeams: string[] = userEntry?.survivorPicks?.map((p: any) => p.team) ?? [];
+
+  const handlePickTeam = async (team: string, game: any) => {
+    if (!userId || !userEntry) {
+      setPickMessage('You must be logged in to submit a pick.');
+      return;
+    }
+    if (alreadyPickedTeams.includes(team)) {
+      setPickMessage(`You have already picked ${team} in a previous round.`);
+      setTimeout(() => setPickMessage(''), 4000);
+      setPickModal(null);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const entryRef = doc(db, 'entries', userId);
+      const pickEntry = {
+        team,
+        round: game.round,
+        region: game.region,
+        gameId: game.id,
+        pickedAt: new Date().toISOString(),
+      };
+      await updateDoc(entryRef, {
+        survivorPicks: arrayUnion(pickEntry),
+        currentPick: team,
+      });
+      setUserEntry((prev: any) => ({
+        ...prev,
+        survivorPicks: [...(prev?.survivorPicks ?? []), pickEntry],
+        currentPick: team,
+      }));
+      setPickMessage(`✅ Pick submitted: ${team}`);
+      setPickModal(null);
+    } catch (err: any) {
+      setPickMessage(`Error submitting pick: ${err.message}`);
+    }
+    setSubmitting(false);
+    setTimeout(() => setPickMessage(''), 5000);
+  };
 
   if (loading) return <div className="p-12 text-center font-bebas text-2xl tracking-widest text-slate-500">Syncing Tournament Data...</div>;
 
@@ -42,36 +87,108 @@ export default function MyPicksPage() {
         </div>
       </header>
 
-      {/* SLEEK PROGRESS CARD (Mirroring Bowl Pick'em Style) */}
+      {pickMessage && (
+        <div className="mb-4 mx-2 p-3 rounded bg-green-900/40 border border-green-500/50 text-green-400 text-sm">
+          {pickMessage}
+        </div>
+      )}
+
+      {/* Progress Card */}
       <div className="glass-panel p-6 mb-8 flex justify-between items-center border-t-2 border-fedRed">
         <div className="flex items-center gap-4">
           <span className="text-4xl">🏆</span>
           <div>
-            <h3 className="font-bebas text-2xl text-white">Current Standings Rank</h3>
-            <p className="text-slate-400 text-sm">Calculated using $Seed \times Round Multiplier$</p>
+            <h3 className="font-bebas text-2xl text-white">Current Pick</h3>
+            <p className="text-slate-400 text-sm">{userEntry?.currentPick ?? 'No pick yet this round'}</p>
           </div>
         </div>
-        <div className="text-4xl font-bebas text-fedRed">--</div>
+        <div className="text-right">
+          <div className="text-slate-500 text-xs uppercase tracking-widest mb-1">Teams Picked</div>
+          <div className="text-2xl font-bebas text-fedRed">{alreadyPickedTeams.length}</div>
+        </div>
       </div>
+
+      {/* Previously picked teams */}
+      {alreadyPickedTeams.length > 0 && (
+        <div className="mb-6 px-2">
+          <h2 className="font-bebas text-xl tracking-wide text-slate-400 mb-2 uppercase">Previously Picked (cannot reuse)</h2>
+          <div className="flex flex-wrap gap-2">
+            {alreadyPickedTeams.map((team: string) => (
+              <span key={team} className="text-xs px-3 py-1 rounded border border-red-500/30 text-red-400 bg-red-900/20">
+                {team}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-4">
         <h2 className="font-bebas text-2xl tracking-wide text-slate-300 mb-4 px-2 uppercase">Upcoming Games</h2>
         {games.length === 0 ? (
           <div className="glass-panel p-10 text-center text-slate-500 italic">No live games found. Selections unlock Sunday.</div>
         ) : (
-          games.map((game, i) => (
-            <div key={i} className="glass-panel p-5 flex items-center justify-between border-l-4 border-l-fedRed transition-all hover:translate-x-1">
+          games.map((game) => (
+            <div key={game.id} className="glass-panel p-5 flex items-center justify-between border-l-4 border-l-fedRed transition-all hover:translate-x-1">
               <div className="flex flex-col">
-                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">{game.round || 'Tournament Game'}</span>
-                <span className="font-bebas text-2xl text-white tracking-wide uppercase">{game.homeTeam} vs {game.awayTeam}</span>
+                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">{game.region} — {game.round || 'Tournament Game'}</span>
+                <span className="font-bebas text-2xl text-white tracking-wide uppercase">
+                  #{game.homeSeed} {game.homeTeam} vs #{game.awaySeed} {game.awayTeam}
+                </span>
+                {game.isComplete && game.winner && (
+                  <span className="text-green-400 text-xs mt-1">✓ Final: {game.winner} won</span>
+                )}
               </div>
-              <button className="bg-slate-800 hover:bg-fedRed text-white px-6 py-2 rounded font-bebas text-xl transition-colors uppercase italic">
-                Pick Team
-              </button>
+              {!game.isComplete && (
+                <button
+                  onClick={() => setPickModal({ game })}
+                  className="bg-slate-800 hover:bg-fedRed text-white px-6 py-2 rounded font-bebas text-xl transition-colors uppercase italic"
+                >
+                  Pick Team
+                </button>
+              )}
             </div>
           ))
         )}
       </div>
+
+      {/* Pick Modal */}
+      {pickModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0b1120] border border-white/20 rounded-2xl p-8 max-w-sm w-full text-center">
+            <h3 className="font-bebas text-3xl text-white mb-2 tracking-widest">Make Your Pick</h3>
+            <p className="text-slate-500 text-sm mb-6">{pickModal.game.region} — {pickModal.game.round}</p>
+            <div className="flex flex-col gap-4">
+              {[
+                { team: pickModal.game.homeTeam, seed: pickModal.game.homeSeed },
+                { team: pickModal.game.awayTeam, seed: pickModal.game.awaySeed },
+              ].map(({ team, seed }) => {
+                const alreadyPicked = alreadyPickedTeams.includes(team);
+                return (
+                  <button
+                    key={team}
+                    onClick={() => !alreadyPicked && !submitting && handlePickTeam(team, pickModal.game)}
+                    disabled={alreadyPicked || submitting}
+                    className={`w-full py-4 px-6 rounded-xl font-bebas text-2xl tracking-widest transition-all ${
+                      alreadyPicked
+                        ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
+                        : 'bg-red-700 hover:bg-red-600 text-white border border-red-500'
+                    }`}
+                  >
+                    #{seed} {team}
+                    {alreadyPicked && <span className="block text-xs text-slate-500 font-sans normal-case">Already used</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setPickModal(null)}
+              className="mt-6 text-slate-500 hover:text-white text-sm transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

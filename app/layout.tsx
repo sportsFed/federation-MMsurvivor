@@ -7,6 +7,11 @@ const bebas = Bebas_Neue({
   variable: '--font-bebas',
 });
 
+export const metadata = {
+  title: 'March Madness Survivor | The Federation',
+  description: 'The Federation March Madness Survivor Pool 2026',
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={bebas.variable}>
