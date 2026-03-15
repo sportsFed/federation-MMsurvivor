@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/firebase/adminApp';
 import { validateAdminSession } from '@/lib/adminAuth';
+import { clearCollection } from '@/lib/firestoreUtils';
 
 // Standard matchup pairings for Round of 64: 1v16, 2v15, 3v14, 4v13, 5v12, 6v11, 7v10, 8v9
 const MATCHUP_PAIRS = [
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    // Clear existing games first to make this operation idempotent
+    await clearCollection('games');
     // Fetch all teams from Firestore
     const teamsSnap = await db.collection('teams').get();
     const teams = teamsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
@@ -64,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Generated ${gamesCreated} Round of 64 games.`,
+      message: `Reset and generated ${gamesCreated} Round of 64 games.`,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

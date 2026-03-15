@@ -12,6 +12,12 @@ function isTestEntry(entry: any): boolean {
   return TEST_KEYWORDS.some(kw => name.includes(kw) || email.includes(kw)) || !!entry.isTestEntry;
 }
 
+function formatCreatedAt(createdAt: any): string {
+  if (!createdAt) return '—';
+  if (createdAt.toDate) return createdAt.toDate().toLocaleDateString();
+  return new Date(createdAt).toLocaleDateString();
+}
+
 export default function AdminEntriesPage() {
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,7 +193,7 @@ export default function AdminEntriesPage() {
                     </td>
                     <td className="p-4 text-right font-mono text-white">{(entry.totalPoints ?? 0).toFixed(1)}</td>
                     <td className="p-4 text-slate-500 text-xs">
-                      {entry.createdAt?.toDate ? entry.createdAt.toDate().toLocaleDateString() : '—'}
+                      {formatCreatedAt(entry.createdAt)}
                     </td>
                     <td className="p-4">
                       <div className="flex gap-2 flex-wrap">

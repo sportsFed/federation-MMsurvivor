@@ -8,6 +8,7 @@ interface Team {
   id: string;
   name: string;
   region: string;
+  seed: number;
   regionalSeed: number;
   nationalSeed: number;
   isEliminated: boolean;
@@ -83,7 +84,8 @@ export default function AdminTeams() {
     try {
       await addDoc(collection(db, 'teams'), {
         name: teamName,
-        regionalSeed: parseInt(regSeed),
+        seed: parseInt(regSeed),         // used by seed-bracket route
+        regionalSeed: parseInt(regSeed), // used by teams display table
         nationalSeed: parseInt(natSeed),
         region,
         isEliminated: false,
@@ -167,7 +169,7 @@ export default function AdminTeams() {
         ) : (
           <>
             {regions.map(rgn => {
-              const regionTeams = teams.filter(t => t.region === rgn).sort((a, b) => a.regionalSeed - b.regionalSeed);
+              const regionTeams = teams.filter(t => t.region === rgn).sort((a, b) => (a.seed ?? a.regionalSeed) - (b.seed ?? b.regionalSeed));
               if (regionTeams.length === 0) return null;
               return (
                 <div key={rgn} className="mb-8">
@@ -186,7 +188,7 @@ export default function AdminTeams() {
                       <tbody>
                         {regionTeams.map(team => (
                           <tr key={team.id} className="border-b border-white/5 hover:bg-white/5 transition">
-                            <td className="p-3 text-center font-mono text-slate-400 text-sm">#{team.regionalSeed}</td>
+                            <td className="p-3 text-center font-mono text-slate-400 text-sm">#{team.seed ?? team.regionalSeed}</td>
                             <td className="p-3">
                               {editingId === team.id ? (
                                 <input
