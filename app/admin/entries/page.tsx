@@ -13,31 +13,11 @@ function isTestEntry(entry: any): boolean {
 }
 
 export default function AdminEntriesPage() {
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState('');
   const [showTestEntries, setShowTestEntries] = useState(true);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/admin/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: passwordInput }),
-      });
-      if (res.ok) {
-        setIsAuthorized(true);
-      } else {
-        alert('Incorrect Commissioner Password');
-      }
-    } catch {
-      alert('Network error verifying password.');
-    }
-  };
 
   const fetchEntries = async () => {
     setLoading(true);
@@ -49,17 +29,15 @@ export default function AdminEntriesPage() {
   };
 
   useEffect(() => {
-    if (isAuthorized) {
-      fetchEntries();
-    }
-  }, [isAuthorized]);
+    fetchEntries();
+  }, []);
 
   const handleToggleElimination = async (uid: string) => {
     try {
       const res = await fetch('/api/admin/toggle-elimination', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, adminPassword: passwordInput }),
+        body: JSON.stringify({ uid }),
       });
       if (res.ok) {
         setActionMessage('Entry status updated.');
@@ -78,7 +56,7 @@ export default function AdminEntriesPage() {
       const res = await fetch('/api/admin/delete-entry', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, adminPassword: passwordInput }),
+        body: JSON.stringify({ uid }),
       });
       if (res.ok) {
         setActionMessage('Entry deleted.');
@@ -98,7 +76,7 @@ export default function AdminEntriesPage() {
       const res = await fetch('/api/admin/mark-test-entry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, isTestEntry: !currentValue, adminPassword: passwordInput }),
+        body: JSON.stringify({ uid, isTestEntry: !currentValue }),
       });
       if (res.ok) {
         setActionMessage(currentValue ? 'Entry unmarked as test.' : 'Entry marked as test.');
@@ -111,25 +89,6 @@ export default function AdminEntriesPage() {
     }
     setTimeout(() => setActionMessage(''), 3000);
   };
-
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b1120]">
-        <form onSubmit={handleLogin} className="glass-panel p-8 w-full max-w-sm border border-white/10 text-center">
-          <h2 className="font-bebas text-3xl text-white mb-6 italic">Commissioner Access</h2>
-          <input 
-            type="password" 
-            placeholder="Enter Admin Password" 
-            className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-center mb-4 focus:border-red-600 outline-none"
-            onChange={(e) => setPasswordInput(e.target.value)}
-          />
-          <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bebas text-xl py-3 rounded-xl transition-all uppercase">
-            Verify Identity
-          </button>
-        </form>
-      </div>
-    );
-  }
 
   const visibleEntries = showTestEntries ? entries : entries.filter(e => !isTestEntry(e));
   const testCount = entries.filter(e => isTestEntry(e)).length;

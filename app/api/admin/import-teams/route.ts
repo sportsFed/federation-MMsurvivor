@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { db } from '@/lib/firebase/adminApp';
+import { validateAdminSession } from '@/lib/adminAuth';
 
 // 2026 March Madness 68-team field (placeholder — update seeds after Selection Sunday)
 const TEAMS_2026 = [
@@ -78,13 +80,13 @@ const TEAMS_2026 = [
   { name: 'First Four Team D', seed: 16, region: 'FirstFour', nationalSeed: 68, isEliminated: false },
 ];
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-
-    if (!process.env.ADMIN_PASSWORD || body.adminPassword !== process.env.ADMIN_PASSWORD) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    if (!(await validateAdminSession(request))) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const body = await request.json();
 
     // Accept a custom teams array from the request body, or fall back to built-in list
     const teamsToImport: typeof TEAMS_2026 = body.teams ?? TEAMS_2026;
@@ -103,7 +105,8 @@ export async function POST(request: Request) {
       success: true,
       message: `Imported ${teamsToImport.length} teams successfully.`,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

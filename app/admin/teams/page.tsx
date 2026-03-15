@@ -14,9 +14,6 @@ interface Team {
 }
 
 export default function AdminTeams() {
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
-
   // Team listing
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,24 +29,6 @@ export default function AdminTeams() {
   const [addMessage, setAddMessage] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/admin/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: passwordInput }),
-      });
-      if (res.ok) {
-        setIsAuthorized(true);
-      } else {
-        alert('Incorrect Commissioner Password');
-      }
-    } catch {
-      alert('Network error verifying password.');
-    }
-  };
-
   const fetchTeams = async () => {
     setLoading(true);
     try {
@@ -63,8 +42,8 @@ export default function AdminTeams() {
   };
 
   useEffect(() => {
-    if (isAuthorized) fetchTeams();
-  }, [isAuthorized]);
+    fetchTeams();
+  }, []);
 
   const startEdit = (team: Team) => {
     setEditingId(team.id);
@@ -83,7 +62,7 @@ export default function AdminTeams() {
       const res = await fetch('/api/admin/rename-team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId, newName: editName.trim(), adminPassword: passwordInput }),
+        body: JSON.stringify({ teamId, newName: editName.trim() }),
       });
       if (res.ok) {
         setRenameStatus('✅ Team renamed successfully.');
@@ -119,25 +98,6 @@ export default function AdminTeams() {
     }
     setTimeout(() => setAddMessage(''), 4000);
   };
-
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b1120]">
-        <form onSubmit={handleLogin} className="p-8 w-full max-w-sm border border-white/10 rounded-2xl text-center" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
-          <h2 className="font-bebas text-3xl text-white mb-6 italic">Commissioner Access</h2>
-          <input
-            type="password"
-            placeholder="Enter Admin Password"
-            className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-center mb-4 focus:border-red-600 outline-none"
-            onChange={(e) => setPasswordInput(e.target.value)}
-          />
-          <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bebas text-xl py-3 rounded-xl transition-all uppercase">
-            Verify Identity
-          </button>
-        </form>
-      </div>
-    );
-  }
 
   const regions = ['East', 'West', 'South', 'Midwest'];
 
@@ -287,4 +247,3 @@ export default function AdminTeams() {
     </div>
   );
 }
-

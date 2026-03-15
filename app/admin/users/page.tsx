@@ -5,31 +5,10 @@ import { db } from '@/lib/firebase/clientApp';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
 export default function AdminUsers() {
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/admin/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: passwordInput }),
-      });
-      if (res.ok) {
-        setIsAuthorized(true);
-      } else {
-        alert('Incorrect Commissioner Password');
-      }
-    } catch {
-      alert('Network error verifying password.');
-    }
-  };
-
   useEffect(() => {
-    if (!isAuthorized) return;
     const fetchUsers = async () => {
       setLoading(true);
       try {
@@ -42,26 +21,7 @@ export default function AdminUsers() {
       setLoading(false);
     };
     fetchUsers();
-  }, [isAuthorized]);
-
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b1120]">
-        <form onSubmit={handleLogin} className="p-8 w-full max-w-sm border border-white/10 rounded-2xl text-center" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
-          <h2 className="font-bebas text-3xl text-white mb-6 italic">Commissioner Access</h2>
-          <input
-            type="password"
-            placeholder="Enter Admin Password"
-            className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-center mb-4 focus:border-red-600 outline-none"
-            onChange={(e) => setPasswordInput(e.target.value)}
-          />
-          <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bebas text-xl py-3 rounded-xl transition-all uppercase">
-            Verify Identity
-          </button>
-        </form>
-      </div>
-    );
-  }
+  }, []);
 
   return (
     <div style={{ backgroundColor: '#0b1120', minHeight: '100vh', color: 'white' }} className="p-8">
