@@ -3,19 +3,16 @@ import { NextRequest } from 'next/server';
 import { db } from '@/lib/firebase/adminApp';
 import { validateAdminSession } from '@/lib/adminAuth';
 
-export async function DELETE(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
     if (!(await validateAdminSession(request))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { uid } = await request.json();
-
-    if (!uid) {
-      return NextResponse.json({ error: 'Missing uid' }, { status: 400 });
+    const { gameId, winner } = await request.json();
+    if (!gameId || !winner) {
+      return NextResponse.json({ error: 'Missing gameId or winner' }, { status: 400 });
     }
-
-    await db.collection('entries').doc(uid).delete();
+    await db.collection('games').doc(gameId).update({ winner, isComplete: true });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

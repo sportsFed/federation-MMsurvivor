@@ -15,7 +15,7 @@ body {
   font-family: 'Bebas Neue', sans-serif;
 }
 
-/* Fix for the massive logos on all pages */
+/* Sensible image defaults — no size caps, no forced centering */
 img {
   max-width: 100%;
   height: auto;
@@ -35,44 +35,36 @@ nav {
   border-bottom: 1px solid #1e293b;
 }
 
-/* Emergency fix for unstyled logos */
-img, svg {
-  max-width: 250px !important; 
-  height: auto !important;
+/* Federation logo utility — small, centred */
+.fed-logo {
+  max-width: 250px;
+  height: auto;
   display: block;
   margin-left: auto;
   margin-right: auto;
 }
 
-/* Force buttons to look like 'The Federation' red */
-button, .btn-red {
-  background-color: #dc2626 !important;
-  color: white !important;
-  padding: 12px 24px !important;
-  border-radius: 8px !important;
-  text-transform: uppercase !important;
-  font-family: var(--font-bebas), sans-serif !important;
+/* Federation-styled red button */
+.btn-fed {
+  background-color: #dc2626;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  font-family: var(--font-bebas), sans-serif;
 }
 
-/* Fix the registration box */
-.glass-panel, form {
-  background: #1e293b !important;
-  padding: 2rem !important;
-  border-radius: 1rem !important;
-  max-width: 400px;
-  margin: 20px auto;
+/* Dark-themed input */
+.input-fed {
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  color: white;
+  padding: 12px;
+  border-radius: 8px;
+  width: 100%;
+  margin-bottom: 10px;
 }
 
-input {
-  background-color: #1e293b !important; /* Dark Slate */
-  border: 1px solid #334155 !important; /* Muted border */
-  color: white !important;
-  padding: 12px !important;
-  border-radius: 8px !important;
-  width: 100% !important;
-  margin-bottom: 10px !important;
-}
-
-input::placeholder {
-  color: #94a3b8 !important;
+.input-fed::placeholder {
+  color: #94a3b8;
 }

@@ -9,23 +9,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { uid } = await request.json();
+    const { teamId, newName } = await request.json();
 
-    if (!uid) {
-      return NextResponse.json({ error: 'Missing uid' }, { status: 400 });
+    if (!teamId || !newName || typeof newName !== 'string' || !newName.trim()) {
+      return NextResponse.json({ error: 'Missing or invalid teamId / newName' }, { status: 400 });
     }
 
-    const entryRef = db.collection('entries').doc(uid);
-    const entrySnap = await entryRef.get();
+    const teamRef = db.collection('teams').doc(teamId);
+    const teamSnap = await teamRef.get();
 
-    if (!entrySnap.exists) {
-      return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+    if (!teamSnap.exists) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    const currentValue = entrySnap.data()?.isEliminated ?? false;
-    await entryRef.update({ isEliminated: !currentValue });
+    await teamRef.update({ name: newName.trim() });
 
-    return NextResponse.json({ success: true, isEliminated: !currentValue });
+    return NextResponse.json({ success: true, name: newName.trim() });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

@@ -4,26 +4,22 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { db } from '@/lib/firebase/clientApp';
 import { collection, getDocs } from 'firebase/firestore';
+import { useAdminAuth } from '@/context/AdminAuthContext';
 
 export default function AdminDashboard() {
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
+  const { logout } = useAdminAuth();
   const [stats, setStats] = useState({ total: 0, active: 0, eliminated: 0, teams: 0, games: 0 });
-  const [loadingStats, setLoadingStats] = useState(false);
+  const [loadingStats, setLoadingStats] = useState(true);
   const [importStatus, setImportStatus] = useState('');
   const [seedStatus, setSeedStatus] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordInput === 'chone1234') {
-      setIsAuthorized(true);
-    } else {
-      alert('Incorrect Commissioner Password');
-    }
-  };
+  // Change password state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordStatus, setPasswordStatus] = useState('');
 
   useEffect(() => {
-    if (!isAuthorized) return;
     const fetchStats = async () => {
       setLoadingStats(true);
       try {
@@ -46,15 +42,14 @@ export default function AdminDashboard() {
       setLoadingStats(false);
     };
     fetchStats();
-  }, [isAuthorized]);
+  }, []);
 
   const handleImportTeams = async () => {
     setImportStatus('Importing teams...');
     try {
       const res = await fetch('/api/admin/import-teams', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminPassword: 'chone1234' }),
+        headers: { 'Content-Type': 'application/json' },        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (res.ok) {
@@ -73,7 +68,7 @@ export default function AdminDashboard() {
       const res = await fetch('/api/admin/seed-bracket', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminPassword: 'chone1234' }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (res.ok) {
@@ -86,26 +81,36 @@ export default function AdminDashboard() {
     }
   };
 
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b1120]">
-        <form onSubmit={handleLogin} className="p-8 w-full max-w-sm border border-white/10 rounded-2xl text-center" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
-          <img src="/Fed-Logo-Full.png" alt="The Federation" style={{ width: '120px', margin: '0 auto 24px' }} />
-          <h2 className="font-bebas text-3xl text-white mb-2 italic tracking-widest">Commissioner Access</h2>
-          <p className="text-slate-500 text-sm mb-6">Admin Panel — March Madness Survivor 2026</p>
-          <input
-            type="password"
-            placeholder="Enter Admin Password"
-            className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-center mb-4 focus:border-red-600 outline-none"
-            onChange={(e) => setPasswordInput(e.target.value)}
-          />
-          <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bebas text-xl py-3 rounded-xl transition-all uppercase tracking-widest">
-            Verify Identity
-          </button>
-        </form>
-      </div>
-    );
-  }
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordStatus('');
+    if (newPassword !== confirmPassword) {
+      setPasswordStatus('❌ New passwords do not match.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordStatus('❌ New password must be at least 8 characters.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPasswordStatus('✅ Password updated successfully.');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        setPasswordStatus(`❌ ${data.error || 'Error updating password.'}`);
+      }
+    } catch {
+      setPasswordStatus('❌ Network error updating password.');
+    }
+  };
 
   const navLinks = [
     { href: '/admin/entries', label: 'Manage Entries', icon: '👥', desc: 'View, eliminate, or delete entrants' },
@@ -118,12 +123,20 @@ export default function AdminDashboard() {
     <div style={{ backgroundColor: '#0b1120', minHeight: '100vh', color: 'white' }} className="p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-10">
-          <img src="/Fed-Logo-Full.png" alt="The Federation" style={{ width: '60px' }} />
-          <div>
-            <h1 className="font-bebas text-5xl text-white tracking-widest italic">Commissioner Panel</h1>
-            <p className="text-slate-400 text-sm">March Madness Survivor 2026 — Admin Dashboard</p>
+        <div className="flex items-center justify-between gap-4 mb-10">
+          <div className="flex items-center gap-4">
+            <img src="/Fed-Logo-Full.png" alt="The Federation" style={{ width: '60px' }} />
+            <div>
+              <h1 className="font-bebas text-5xl text-white tracking-widest italic">Commissioner Panel</h1>
+              <p className="text-slate-400 text-sm">March Madness Survivor 2026 — Admin Dashboard</p>
+            </div>
           </div>
+          <button
+            onClick={logout}
+            className="px-4 py-2 rounded-lg border border-white/20 text-slate-400 hover:text-white hover:border-white/40 text-sm transition"
+          >
+            Log Out
+          </button>
         </div>
 
         {/* Stats Row */}
@@ -171,7 +184,7 @@ export default function AdminDashboard() {
                 className="w-full py-3 px-6 rounded-xl font-bebas text-xl text-white transition-all uppercase tracking-widest"
                 style={{ backgroundColor: '#dc2626' }}
               >
-                🏀 Import All 68 Teams
+                �� Import All 68 Teams
               </button>
               {importStatus && <p className="mt-2 text-sm text-slate-300">{importStatus}</p>}
               <p className="text-slate-600 text-xs mt-1">Bulk-loads all 68 teams from the built-in Selection Sunday list</p>

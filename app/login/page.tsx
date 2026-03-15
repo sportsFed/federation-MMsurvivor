@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function LoginPage() {
-  const [view, setView] = useState<'login' | 'register'>('login');
+  const [view, setView] = useState<'login' | 'register'>('register');
   const [email, setEmail] = useState('');
   const [passcode, setPasscode] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -59,7 +59,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center mb-8">
           <img src="/Fed-Logo.png" alt="The Federation" className="w-16 h-16 mb-4 object-contain" />
           <h1 className="font-bebas text-4xl tracking-tight uppercase italic text-white text-center">
-            {view === 'login' ? 'Returning User' : 'New Entry'}
+            {view === 'login' ? 'Welcome Back' : 'Sign Up'}
           </h1>
           <p className="text-slate-500 text-[10px] uppercase tracking-[0.2em] font-bold">The Federation</p>
         </div>
@@ -69,12 +69,12 @@ export default function LoginPage() {
             type="button"
             className={`flex-1 pb-3 font-bebas text-xl transition-all ${view === 'register' ? 'text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-300'}`}
             onClick={() => setView('register')}
-          >Register</button>
+          >Sign Up</button>
           <button 
             type="button"
             className={`flex-1 pb-3 font-bebas text-xl transition-all ${view === 'login' ? 'text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-slate-300'}`}
             onClick={() => setView('login')}
-          >Sign In</button>
+          >Returning</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">

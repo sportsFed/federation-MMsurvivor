@@ -5,22 +5,10 @@ import { db } from '@/lib/firebase/clientApp';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
 export default function AdminUsers() {
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordInput === 'chone1234') {
-      setIsAuthorized(true);
-    } else {
-      alert('Incorrect Commissioner Password');
-    }
-  };
-
   useEffect(() => {
-    if (!isAuthorized) return;
     const fetchUsers = async () => {
       setLoading(true);
       try {
@@ -53,6 +41,7 @@ export default function AdminUsers() {
       </div>
     );
   }
+  }, []);
 
   return (
     <div style={{ backgroundColor: '#0b1120', minHeight: '100vh', color: 'white' }} className="p-8">

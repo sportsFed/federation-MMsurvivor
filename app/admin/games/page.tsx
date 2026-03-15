@@ -7,6 +7,9 @@ import { collection, getDocs, doc, updateDoc, query, orderBy } from 'firebase/fi
 export default function AdminGamesPage() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+
+export default function AdminGamesPage() {
   const [games, setGames] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState('');
@@ -36,6 +39,8 @@ export default function AdminGamesPage() {
   useEffect(() => {
     if (isAuthorized) fetchGames();
   }, [isAuthorized]);
+    fetchGames();
+  }, []);
 
   const handleSetWinner = async (gameId: string) => {
     const winner = winnerInputs[gameId];
@@ -52,6 +57,18 @@ export default function AdminGamesPage() {
       setActionMessage(`Game updated — winner: ${winner}`);
       setWinnerInputs(prev => ({ ...prev, [gameId]: '' }));
       fetchGames();
+      const res = await fetch('/api/admin/set-game-winner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId, winner }),
+      });
+      if (res.ok) {
+        setActionMessage(`Game updated — winner: ${winner}`);
+        setWinnerInputs(prev => ({ ...prev, [gameId]: '' }));
+        fetchGames();
+      } else {
+        setActionMessage('Error updating game.');
+      }
     } catch {
       setActionMessage('Error updating game.');
     }
@@ -66,6 +83,17 @@ export default function AdminGamesPage() {
       });
       setActionMessage('Game reopened.');
       fetchGames();
+      const res = await fetch('/api/admin/reopen-game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId }),
+      });
+      if (res.ok) {
+        setActionMessage('Game reopened.');
+        fetchGames();
+      } else {
+        setActionMessage('Error reopening game.');
+      }
     } catch {
       setActionMessage('Error reopening game.');
     }
@@ -103,6 +131,20 @@ export default function AdminGamesPage() {
           <p className="text-slate-500 text-sm mt-1">
             {pendingGames.length} pending &middot; {completedGames.length} completed
           </p>
+  const pendingGames = games.filter(g => !g.isComplete);
+  const completedGames = games.filter(g => g.isComplete);
+
+  return (
+    <div style={{ backgroundColor: '#0b1120', minHeight: '100vh', color: 'white' }} className="p-8">
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-6">
+          <a href="/admin" className="text-slate-400 hover:text-white text-sm">← Admin Dashboard</a>
+          <h1 className="font-bebas text-4xl text-white mt-2">Manage Games</h1>
+          {!loading && (
+            <p className="text-slate-500 text-sm mt-1">
+              {pendingGames.length} pending · {completedGames.length} completed
+            </p>
+          )}
         </div>
 
         {actionMessage && (
@@ -119,34 +161,31 @@ export default function AdminGamesPage() {
           </div>
         ) : (
           <>
-            {/* Pending Games */}
             {pendingGames.length > 0 && (
-              <div className="mb-8">
+              <div className="mb-10">
                 <h2 className="font-bebas text-2xl text-yellow-400 mb-4 tracking-widest">Pending Games</h2>
                 <div className="space-y-3">
                   {pendingGames.map(game => (
-                    <div key={game.id} className="p-4 rounded-xl border border-white/10 flex flex-col md:flex-row md:items-center gap-4" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                    <div key={game.id} className="p-4 rounded-xl border border-yellow-500/20 flex flex-col md:flex-row md:items-center gap-4" style={{ backgroundColor: 'rgba(255,255,0,0.03)' }}>
                       <div className="flex-1">
                         <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">{game.region} — {game.round}</div>
                         <div className="font-bebas text-xl text-white">
                           #{game.homeSeed} {game.homeTeam} <span className="text-slate-500">vs</span> #{game.awaySeed} {game.awayTeam}
                         </div>
-                        {game.gameDate && <div className="text-slate-500 text-xs mt-1">{game.gameDate}</div>}
                       </div>
                       <div className="flex gap-2 items-center">
                         <select
                           value={winnerInputs[game.id] || ''}
                           onChange={(e) => setWinnerInputs(prev => ({ ...prev, [game.id]: e.target.value }))}
-                          className="bg-slate-900 border border-slate-700 text-white text-sm p-2 rounded"
+                          className="bg-slate-900 border border-slate-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-red-600"
                         >
-                          <option value="">Select Winner</option>
-                          <option value={game.homeTeam}>{game.homeTeam}</option>
-                          <option value={game.awayTeam}>{game.awayTeam}</option>
+                          <option value="">Select winner…</option>
+                          <option value={game.homeTeam}>#{game.homeSeed} {game.homeTeam}</option>
+                          <option value={game.awayTeam}>#{game.awaySeed} {game.awayTeam}</option>
                         </select>
                         <button
                           onClick={() => handleSetWinner(game.id)}
-                          className="px-4 py-2 rounded text-white text-sm font-bold transition-all"
-                          style={{ backgroundColor: '#dc2626' }}
+                          className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-all"
                         >
                           Set Winner
                         </button>
@@ -157,7 +196,6 @@ export default function AdminGamesPage() {
               </div>
             )}
 
-            {/* Completed Games */}
             {completedGames.length > 0 && (
               <div>
                 <h2 className="font-bebas text-2xl text-green-400 mb-4 tracking-widest">Completed Games</h2>
