@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase/clientApp';
-import { collection, getDocs, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
 export default function AdminGamesPage() {
   const [games, setGames] = useState<any[]>([]);
@@ -34,13 +34,18 @@ export default function AdminGamesPage() {
       return;
     }
     try {
-      await updateDoc(doc(db, 'games', gameId), {
-        winner,
-        isComplete: true,
+      const res = await fetch('/api/admin/set-game-winner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId, winner }),
       });
-      setActionMessage(`Game updated — winner: ${winner}`);
-      setWinnerInputs(prev => ({ ...prev, [gameId]: '' }));
-      fetchGames();
+      if (res.ok) {
+        setActionMessage(`Game updated — winner: ${winner}`);
+        setWinnerInputs(prev => ({ ...prev, [gameId]: '' }));
+        fetchGames();
+      } else {
+        setActionMessage('Error updating game.');
+      }
     } catch {
       setActionMessage('Error updating game.');
     }
@@ -49,12 +54,17 @@ export default function AdminGamesPage() {
 
   const handleReopenGame = async (gameId: string) => {
     try {
-      await updateDoc(doc(db, 'games', gameId), {
-        winner: null,
-        isComplete: false,
+      const res = await fetch('/api/admin/reopen-game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId }),
       });
-      setActionMessage('Game reopened.');
-      fetchGames();
+      if (res.ok) {
+        setActionMessage('Game reopened.');
+        fetchGames();
+      } else {
+        setActionMessage('Error reopening game.');
+      }
     } catch {
       setActionMessage('Error reopening game.');
     }
