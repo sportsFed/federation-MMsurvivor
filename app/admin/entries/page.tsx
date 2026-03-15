@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { db } from '@/lib/firebase/clientApp';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
 const TEST_KEYWORDS = ['test', 'dummy', 'example', 'fake', 'sample'];
 
@@ -30,18 +28,13 @@ export default function AdminEntriesPage() {
     setLoading(true);
     setFetchError('');
     try {
-      const q = query(collection(db, 'entries'), orderBy('displayName', 'asc'));
-      const querySnapshot = await getDocs(q);
-      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setEntries(data);
-    } catch {
-      try {
-        const querySnapshot = await getDocs(collection(db, 'entries'));
-        const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setEntries(data);
-      } catch (fallbackErr: any) {
-        setFetchError(`Failed to load entries: ${fallbackErr.message}`);
-      }
+      const res = await fetch('/api/admin/entries');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setEntries(data.entries);
+    } catch (err: any) {
+      setFetchError(`Failed to load entries: ${err.message}`);
     } finally {
       setLoading(false);
     }

@@ -85,7 +85,7 @@ export default function LoginPage() {
             </div>
           )}
           <input type="email" placeholder="Email Address" onChange={e => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:border-red-600 outline-none" required />
-          <input type="password" placeholder="4-Digit PIN" maxLength={4} onChange={e => setPasscode(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-lg text-center tracking-[1em] font-mono text-xl text-white focus:border-red-600 outline-none" required />
+          <input type="password" placeholder="4-Digit PIN" maxLength={4} onChange={e => setPasscode(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:border-red-600 outline-none" required />
           <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bebas text-2xl py-4 rounded-xl shadow-lg shadow-red-900/20 transition-all uppercase tracking-wider">
             {view === 'register' ? 'Create My Entry' : 'Enter Tournament'}
           </button>
