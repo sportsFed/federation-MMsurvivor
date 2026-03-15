@@ -5,7 +5,7 @@ export async function DELETE(request: Request) {
   try {
     const { uid, adminPassword } = await request.json();
 
-    if (adminPassword !== 'chone1234') {
+    if (adminPassword !== (process.env.ADMIN_PASSWORD ?? 'chone1234')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 

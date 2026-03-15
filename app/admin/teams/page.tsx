@@ -18,7 +18,7 @@ export default function AdminTeams() {
         name: teamName,
         regionalSeed: parseInt(regSeed),
         nationalSeed: parseInt(natSeed),
-        region: region,
+        region,
         isEliminated: false,
       });
       setTeamName('');

@@ -14,6 +14,11 @@ export default function MyPicksPage() {
   const [submitting, setSubmitting] = useState(false);
   const [pickMessage, setPickMessage] = useState('');
 
+  const showMessage = (msg: string, ms = 5000) => {
+    setPickMessage(msg);
+    setTimeout(() => setPickMessage(''), ms);
+  };
+
   useEffect(() => {
     onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -33,12 +38,11 @@ export default function MyPicksPage() {
 
   const handlePickTeam = async (team: string, game: any) => {
     if (!userId || !userEntry) {
-      setPickMessage('You must be logged in to submit a pick.');
+      showMessage('You must be logged in to submit a pick.');
       return;
     }
     if (alreadyPickedTeams.includes(team)) {
-      setPickMessage(`You have already picked ${team} in a previous round.`);
-      setTimeout(() => setPickMessage(''), 4000);
+      showMessage(`You have already picked ${team} in a previous round.`, 4000);
       setPickModal(null);
       return;
     }
@@ -61,13 +65,12 @@ export default function MyPicksPage() {
         survivorPicks: [...(prev?.survivorPicks ?? []), pickEntry],
         currentPick: team,
       }));
-      setPickMessage(`✅ Pick submitted: ${team}`);
+      showMessage(`✅ Pick submitted: ${team}`);
       setPickModal(null);
     } catch (err: any) {
-      setPickMessage(`Error submitting pick: ${err.message}`);
+      showMessage(`Error submitting pick: ${err.message}`);
     }
     setSubmitting(false);
-    setTimeout(() => setPickMessage(''), 5000);
   };
 
   if (loading) return <div className="p-12 text-center font-bebas text-2xl tracking-widest text-slate-500">Syncing Tournament Data...</div>;
