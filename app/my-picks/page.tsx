@@ -3,17 +3,45 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase/clientApp';
-import { collection, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
-function formatLocalTime(isoString: string): string {
+function formatEasternTime(isoString: string): string {
   const d = new Date(isoString);
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
-function getGameDate(isoString: string): string {
+function getEasternGameDate(isoString: string): string {
   const d = new Date(isoString);
-  return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  return d.toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+function getEasternDateKey(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+}
+
+function formatCountdown(isoString: string, now: Date): string | null {
+  const target = new Date(isoString);
+  const diff = target.getTime() - now.getTime();
+  if (diff <= 0) return null;
+  const totalSeconds = Math.floor(diff / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 24) return null;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 export default function MyPicksPage() {
@@ -23,11 +51,18 @@ export default function MyPicksPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pickMessage, setPickMessage] = useState('');
+  const [now, setNow] = useState(() => new Date());
+  const [confirmPick, setConfirmPick] = useState<{ team: string; seed: number; game: any } | null>(null);
 
   const showMessage = (msg: string, ms = 5000) => {
     setPickMessage(msg);
     setTimeout(() => setPickMessage(''), ms);
   };
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -96,6 +131,22 @@ export default function MyPicksPage() {
         survivorPicks: updatedPicks,
         currentPick: team,
       });
+      // Write audit log entry
+      try {
+        await addDoc(collection(db, 'pickLog'), {
+          userId,
+          displayName: userEntry?.displayName ?? '',
+          team,
+          round: game.round,
+          region: game.region,
+          gameId: game.id,
+          action: existingPicks.some((p: any) => p.round === game.round) ? 'changed' : 'submitted',
+          previousTeam: existingPicks.find((p: any) => p.round === game.round)?.team ?? null,
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        // Non-fatal: log failure doesn't block pick submission
+      }
       setUserEntry((prev: any) => ({
         ...prev,
         survivorPicks: updatedPicks,
@@ -114,9 +165,10 @@ export default function MyPicksPage() {
     return aTime - bTime;
   });
 
-  // Group by calendar date (in local timezone)
+  // Group by calendar date (in Eastern Time)
   const gamesByDay = sortedGames.reduce((acc: Record<string, any[]>, game) => {
-    const dateKey = new Date(game.gameTime ?? game.tipoff ?? 0).toLocaleDateString();
+    const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
+    const dateKey = gameTime ? getEasternDateKey(gameTime) : 'Unknown';
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(game);
     return acc;
@@ -127,6 +179,23 @@ export default function MyPicksPage() {
     (p: any) => p.result !== 'win' && p.result !== 'loss'
   );
   const currentPickTeam: string | undefined = currentRoundPick?.team ?? userEntry?.currentPick;
+
+  // Friday pick alert logic
+  const fridayDateKey = getEasternDateKey('2026-03-20T12:00:00-04:00');
+  const fridayGames = sortedGames.filter(g => {
+    const gameTime = g.gameTime ?? g.tipoff;
+    if (!gameTime) return false;
+    return getEasternDateKey(gameTime) === fridayDateKey;
+  });
+  const unlockedFridayGames = fridayGames.filter(g => {
+    const gameTime = g.gameTime ?? g.tipoff;
+    return gameTime && now < new Date(gameTime);
+  });
+  const currentPickIsFriday = fridayGames.some(g => {
+    const pick = (userEntry?.survivorPicks ?? []).find((p: any) => p.round === g.round && p.gameId === g.id);
+    return pick?.team === currentPickTeam;
+  });
+  const showFridayAlert = unlockedFridayGames.length > 0 && !currentPickIsFriday;
 
   if (loading) {
     return (
@@ -178,6 +247,16 @@ export default function MyPicksPage() {
         </div>
       )}
 
+      {/* Friday pick missing alert */}
+      {showFridayAlert && (
+        <div className="mb-4 p-3 rounded-lg bg-blue-900/20 border border-blue-600/40 text-blue-300 text-sm font-sans flex items-center justify-between">
+          <span>🗓️ You don&apos;t have a Friday game pick yet</span>
+          <a href="#friday-games" className="text-blue-400 underline hover:text-blue-300 text-xs font-semibold">
+            See Friday Games →
+          </a>
+        </div>
+      )}
+
       {/* Current Pick Status */}
       {currentPickTeam && (
         <div className="mb-4 p-3 rounded-lg bg-slate-800/50 border border-slate-700 text-sm font-sans flex items-center gap-2">
@@ -213,9 +292,11 @@ export default function MyPicksPage() {
         </div>
       ) : (
         Object.entries(gamesByDay).map(([dateKey, dayGames]) => {
-          const dayLabel = getGameDate(dayGames[0].gameTime ?? dayGames[0].tipoff ?? '');
+          const gameTimeStr = dayGames[0].gameTime ?? dayGames[0].tipoff ?? '';
+          const dayLabel = gameTimeStr ? getEasternGameDate(gameTimeStr) : dateKey;
+          const isFriday = gameTimeStr ? getEasternDateKey(gameTimeStr) === fridayDateKey : false;
           return (
-            <div key={dateKey}>
+            <div id={isFriday ? 'friday-games' : undefined} key={dateKey}>
               <div className="flex items-center gap-3 my-4">
                 <div className="flex-1 h-px bg-slate-700" />
                 <span className="text-xs text-slate-400 uppercase tracking-widest font-sans font-semibold">{dayLabel}</span>
@@ -223,8 +304,9 @@ export default function MyPicksPage() {
               </div>
               {dayGames.map((game) => {
                 const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
-                const isLocked = gameTime ? new Date() >= new Date(gameTime) : game.isComplete;
-                const localTime = gameTime ? formatLocalTime(gameTime) : null;
+                const isLocked = gameTime ? now >= new Date(gameTime) : game.isComplete;
+                const easternTime = gameTime ? formatEasternTime(gameTime) : null;
+                const countdown = (!isLocked && gameTime) ? formatCountdown(gameTime, now) : null;
                 const gameRoundPick = (userEntry?.survivorPicks ?? []).find((p: any) => p.round === game.round);
                 const thisGamePickTeam = gameRoundPick?.team;
 
@@ -243,10 +325,14 @@ export default function MyPicksPage() {
                         {game.network && (
                           <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-sans">{game.network}</span>
                         )}
-                        {localTime && (
-                          <span className="text-[11px] text-slate-400 font-sans">{localTime}</span>
+                        {easternTime && (
+                          <span className="text-[11px] text-slate-400 font-sans">{easternTime} ET</span>
                         )}
-                        {isLocked && <span className="text-[11px]">🔒</span>}
+                        {isLocked ? (
+                          game.isComplete && game.winner ? null : <span className="text-[11px] text-slate-500">🔒</span>
+                        ) : countdown ? (
+                          <span className="text-[11px] text-amber-400 font-mono font-semibold">⏱ {countdown}</span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -260,7 +346,7 @@ export default function MyPicksPage() {
                         return (
                           <button
                             key={team}
-                            onClick={() => canPick && handlePickTeam(team, game)}
+                            onClick={() => canPick && setConfirmPick({ team, seed, game })}
                             disabled={!canPick}
                             className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left ${
                               isThisRoundPick
@@ -345,6 +431,40 @@ export default function MyPicksPage() {
           </a>
         )}
       </div>
+
+      {/* Pick Confirmation Modal */}
+      {confirmPick && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl">
+            <div className="text-4xl mb-3">🏀</div>
+            <h3 className="font-bebas text-2xl text-white tracking-widest mb-1">Confirm Your Pick</h3>
+            <p className="text-slate-400 text-sm mb-1 font-sans">{confirmPick.game.region} · {confirmPick.game.round}</p>
+            <div className="my-4 py-3 px-4 bg-slate-800 rounded-xl border border-slate-600">
+              <p className="text-xs text-slate-500 uppercase tracking-widest mb-1 font-sans">You are picking</p>
+              <p className="font-bebas text-3xl text-white tracking-wide">#{confirmPick.seed} {confirmPick.team}</p>
+            </div>
+            <p className="text-xs text-slate-500 font-sans mb-5">Once confirmed, you can change this pick until tip-off.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmPick(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 font-sans text-sm transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const pick = confirmPick;
+                  setConfirmPick(null);
+                  await handlePickTeam(pick.team, pick.game);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-fedRed hover:bg-red-700 text-white font-sans text-sm font-semibold transition"
+              >
+                Confirm Pick
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

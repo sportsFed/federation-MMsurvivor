@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase/adminApp';
-import { calculateSurvivorScore } from '@/lib/scoring';
+import { calculateSurvivorScore, calculateConsolationScore } from '@/lib/scoring';
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -65,6 +65,10 @@ export async function GET(request: Request) {
         const pickedTeam = survivorPicks[pickIndex].team;
         const isWinner = pickedTeam === winnerName;
 
+        // Get picked team's seed for consolation scoring
+        const pickedSeed: number = fsGame.homeTeam === pickedTeam ? fsGame.homeSeed : fsGame.awaySeed;
+        const consolationPoints = calculateConsolationScore(pickedSeed);
+
         // Update survivorPicks result
         const updatedPicks = [...survivorPicks];
         updatedPicks[pickIndex] = { ...updatedPicks[pickIndex], result: isWinner ? 'win' : 'loss' };
@@ -78,6 +82,7 @@ export async function GET(request: Request) {
           batch.update(entryDoc.ref, {
             survivorPicks: updatedPicks,
             isEliminated: true,
+            totalPoints: (entry.totalPoints ?? 0) + consolationPoints,
           });
         }
       }

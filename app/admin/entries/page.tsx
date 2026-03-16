@@ -23,6 +23,7 @@ export default function AdminEntriesPage() {
   const [actionMessage, setActionMessage] = useState('');
   const [showTestEntries, setShowTestEntries] = useState(true);
   const [fetchError, setFetchError] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchEntries = async () => {
     setLoading(true);
@@ -168,6 +169,7 @@ export default function AdminEntriesPage() {
                 {visibleEntries.map((entry) => {
                   const testEntry = isTestEntry(entry);
                   return (
+                  <>
                   <tr key={entry.id} className={`border-b border-white/5 hover:bg-white/5 transition ${testEntry ? 'opacity-60' : ''}`}>
                     <td className="p-4 font-semibold text-white">
                       <span>{entry.displayName || '—'}</span>
@@ -225,9 +227,42 @@ export default function AdminEntriesPage() {
                             Delete
                           </button>
                         )}
+                        <button
+                          onClick={() => setExpandedId(prev => prev === entry.id ? null : entry.id)}
+                          className="text-xs px-3 py-1 rounded border border-slate-600 text-slate-400 hover:bg-slate-800 transition"
+                        >
+                          {expandedId === entry.id ? 'Hide History' : 'Pick History'}
+                        </button>
                       </div>
                     </td>
                   </tr>
+                  {expandedId === entry.id && (
+                    <tr key={`${entry.id}-history`} className="bg-slate-900/40">
+                      <td colSpan={7} className="px-6 py-4">
+                        <p className="text-xs text-slate-400 uppercase tracking-widest mb-2 font-sans">Survivor Pick History</p>
+                        {!entry.survivorPicks || entry.survivorPicks.length === 0 ? (
+                          <p className="text-slate-600 text-sm italic">No picks recorded.</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {entry.survivorPicks.map((pick: any, i: number) => (
+                              <div key={i} className="flex items-center gap-4 text-xs font-sans bg-slate-800/50 rounded px-3 py-2">
+                                <span className="text-slate-500 w-32 shrink-0">{pick.pickedAt ? new Date(pick.pickedAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'} ET</span>
+                                <span className="text-slate-400 w-24 shrink-0">{pick.round}</span>
+                                <span className="text-slate-400 w-20 shrink-0">{pick.region}</span>
+                                <span className="text-white font-semibold">{pick.team}</span>
+                                <span className="ml-auto">
+                                  {pick.result === 'win' ? <span className="text-green-400">✅ Win</span>
+                                    : pick.result === 'loss' ? <span className="text-red-400">❌ Loss</span>
+                                    : <span className="text-slate-500">Pending</span>}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </>
                   );
                 })}
                 {visibleEntries.length === 0 && (

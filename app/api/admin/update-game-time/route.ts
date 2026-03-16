@@ -8,18 +8,11 @@ export async function POST(request: NextRequest) {
     if (!(await validateAdminSession(request))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const { gameId, winner } = await request.json();
-    if (!gameId || !winner) {
-      return NextResponse.json({ error: 'Missing gameId or winner' }, { status: 400 });
+    const { gameId, gameTime } = await request.json();
+    if (!gameId || !gameTime) {
+      return NextResponse.json({ error: 'Missing gameId or gameTime' }, { status: 400 });
     }
-    await db.collection('games').doc(gameId).update({ winner, isComplete: true });
-    await db.collection('pickLog').add({
-      action: 'admin_set_winner',
-      gameId,
-      winner,
-      timestamp: new Date().toISOString(),
-      adminAction: true,
-    });
+    await db.collection('games').doc(gameId).update({ gameTime });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
