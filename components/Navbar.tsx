@@ -8,6 +8,7 @@ import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 
 const NAV_LINKS = [
   { href: '/my-picks', label: 'My Picks' },
+  { href: '/final-four', label: 'Pre-Tournament Picks' },
   { href: '/standings', label: 'Standings' },
   { href: '/my-bracket', label: 'My Bracket' },
   { href: '/rules', label: 'Rules' },

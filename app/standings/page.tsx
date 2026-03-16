@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -25,6 +25,13 @@ export default function StandingsPage() {
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
+  const currentUserRowRef = useRef<HTMLTableRowElement | null>(null);
+
+  useEffect(() => {
+    if (currentUserId && entries.length > 0) {
+      currentUserRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [currentUserId, entries]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -81,11 +88,11 @@ export default function StandingsPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900/50 border-b border-slate-700">
-              <th className="p-4 font-bebas text-slate-400 tracking-widest text-sm uppercase w-12">#</th>
-              <th className="p-4 font-bebas text-slate-400 tracking-widest text-sm uppercase">Entrant</th>
-              <th className="p-4 font-bebas text-slate-400 tracking-widest text-sm uppercase text-center">Status</th>
-              <th className="p-4 font-bebas text-slate-400 tracking-widest text-sm uppercase text-center">Streak</th>
-              <th className="p-4 font-bebas text-slate-400 tracking-widest text-sm uppercase text-right">Points</th>
+              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase w-12">#</th>
+              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase">Entrant</th>
+              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase text-center">Status</th>
+              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase text-center">Streak</th>
+              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase text-right">Points</th>
             </tr>
           </thead>
           <tbody>
@@ -96,36 +103,37 @@ export default function StandingsPage() {
               return (
                 <tr
                   key={entry.id}
+                  ref={isCurrentUser ? currentUserRowRef : undefined}
                   className={`border-b border-slate-800 transition ${
                     isCurrentUser
                       ? 'border border-fedRed/50 bg-red-900/10'
                       : 'hover:bg-slate-800/40'
                   }`}
                 >
-                  <td className="p-4 font-bebas text-2xl text-slate-400">
+                  <td className="p-2 font-bebas text-xl text-slate-400">
                     {RANK_EMOJI[rank] ?? rank}
                   </td>
-                  <td className="p-4 font-semibold text-white">
+                  <td className="p-2 font-semibold text-white">
                     {entry.displayName || 'Anonymous Entrant'}
                     {isCurrentUser && (
                       <span className="ml-2 text-xs text-fedRed font-sans uppercase tracking-widest">You</span>
                     )}
                   </td>
-                  <td className="p-4 text-center">
+                  <td className="p-2 text-center">
                     {entry.isEliminated ? (
                       <span className="text-red-400 bg-red-900/30 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider border border-red-500/30">Eliminated</span>
                     ) : (
                       <span className="text-green-400 bg-green-900/30 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider border border-green-500/30">Active</span>
                     )}
                   </td>
-                  <td className="p-4 text-center">
+                  <td className="p-2 text-center">
                     {streak > 1 ? (
-                      <span className="text-orange-400 font-bebas text-lg">🔥 {streak}</span>
+                      <span className="text-orange-400 font-bebas text-base">🔥 {streak}</span>
                     ) : (
                       <span className="text-slate-600 text-sm">—</span>
                     )}
                   </td>
-                  <td className="p-4 text-right font-mono text-lg font-bold text-fedRed">
+                  <td className="p-2 text-right font-mono text-base font-bold text-fedRed">
                     {(entry.totalPoints ?? 0).toFixed(1)}
                   </td>
                 </tr>
