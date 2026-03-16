@@ -12,3 +12,7 @@ export function calculateSurvivorScore(seed: number, roundName: string): number 
   const score = seed * multiplier;
   return parseFloat(score.toFixed(1));
 }
+
+export function calculateConsolationScore(seed: number): number {
+  return parseFloat((seed / 100).toFixed(2));
+}

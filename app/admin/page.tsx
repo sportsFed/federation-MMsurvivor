@@ -118,6 +118,7 @@ export default function AdminDashboard() {
     { href: '/admin/teams', label: 'Manage Teams', icon: '🏀', desc: 'Add individual tournament teams' },
     { href: '/admin/games', label: 'Manage Games', icon: '🎮', desc: 'Set game results & winners' },
     { href: '/admin/users', label: 'User Directory', icon: '📋', desc: 'Browse all registered users' },
+    { href: '/admin/activity', label: 'Activity Log', icon: '📝', desc: 'Full audit trail of all pick submissions and changes' },
   ];
 
   return (

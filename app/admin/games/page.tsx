@@ -9,6 +9,12 @@ export default function AdminGamesPage() {
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState('');
   const [winnerInputs, setWinnerInputs] = useState<Record<string, string>>({});
+  const [editTimeInputs, setEditTimeInputs] = useState<Record<string, string>>({});
+  const [editingTime, setEditingTime] = useState<string | null>(null);
+
+  function isoToDatetimeLocal(iso: string): string {
+    return iso.slice(0, 16);
+  }
 
   const fetchGames = async () => {
     setLoading(true);
@@ -112,6 +118,38 @@ export default function AdminGamesPage() {
                         <div className="font-bebas text-xl text-white">
                           #{game.homeSeed} {game.homeTeam} <span className="text-slate-500">vs</span> #{game.awaySeed} {game.awayTeam}
                         </div>
+                        {editingTime === game.id ? (
+                          <div className="flex gap-2 items-center mt-2">
+                            <input
+                              type="datetime-local"
+                              value={editTimeInputs[game.id] ?? isoToDatetimeLocal(game.gameTime ?? '')}
+                              onChange={(e) => setEditTimeInputs(prev => ({ ...prev, [game.id]: e.target.value }))}
+                              className="bg-slate-900 border border-slate-700 text-white text-xs px-2 py-1 rounded focus:outline-none focus:border-red-600"
+                            />
+                            <button
+                              onClick={async () => {
+                                const newTime = editTimeInputs[game.id];
+                                if (!newTime) return;
+                                await fetch('/api/admin/update-game-time', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ gameId: game.id, gameTime: new Date(newTime).toISOString() }),
+                                });
+                                setEditingTime(null);
+                                fetchGames();
+                              }}
+                              className="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white transition"
+                            >Save</button>
+                            <button onClick={() => setEditingTime(null)} className="text-xs text-slate-400 hover:text-white">Cancel</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setEditingTime(game.id)}
+                            className="text-xs text-slate-500 hover:text-slate-300 mt-1 underline"
+                          >
+                            {game.gameTime ? `⏱ ${new Date(game.gameTime).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ET` : 'Set time'}
+                          </button>
+                        )}
                       </div>
                       <div className="flex gap-2 items-center">
                         <select

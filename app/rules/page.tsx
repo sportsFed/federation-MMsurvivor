@@ -33,6 +33,10 @@ export default function RulesPage() {
             <span className="text-fedRed font-bebas text-lg shrink-0">4.</span>
             <span>The last person standing (or the one with the <strong className="text-white">most points</strong> if multiple survive) wins.</span>
           </li>
+          <li className="flex gap-3">
+            <span className="text-fedRed font-bebas text-lg shrink-0">5.</span>
+            <span>If eliminated, you earn <strong className="text-white">consolation points</strong> equal to your losing pick&apos;s seed ÷ 100 (e.g., picking a #9 seed that loses earns <span className="text-yellow-400">+0.09 pts</span>). This reduces ties and rewards those who took bigger risks.</span>
+          </li>
         </ul>
       </div>
 
