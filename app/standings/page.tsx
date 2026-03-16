@@ -5,19 +5,6 @@ import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
-function calcStreak(survivorPicks: any[]): number {
-  if (!survivorPicks || survivorPicks.length === 0) return 0;
-  let streak = 0;
-  for (let i = survivorPicks.length - 1; i >= 0; i--) {
-    if (survivorPicks[i].result === 'win') {
-      streak++;
-    } else {
-      break;
-    }
-  }
-  return streak;
-}
-
 const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };
 
 export default function StandingsPage() {
@@ -84,57 +71,73 @@ export default function StandingsPage() {
           <p className="text-slate-400 text-sm">The leaderboard will populate once the tournament begins and picks are scored. You're in — sit tight!</p>
         </div>
       ) : (
-      <div className="glass-panel overflow-hidden">
-        <table className="w-full text-left border-collapse">
+      <div className="glass-panel overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[700px]">
           <thead>
             <tr className="bg-slate-900/50 border-b border-slate-700">
-              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase w-12">#</th>
-              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase">Entrant</th>
-              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Status</th>
-              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Streak</th>
-              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-right">Points</th>
+              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase w-10">#</th>
+              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase">Entrant</th>
+              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-right">Score</th>
+              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Status</th>
+              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">Today&apos;s Pick</th>
+              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">Final Four</th>
+              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">🏆 Champion</th>
             </tr>
           </thead>
           <tbody>
             {entries.map((entry, index) => {
               const rank = index + 1;
               const isCurrentUser = entry.id === currentUserId;
-              const streak = calcStreak(entry.survivorPicks);
+              const isPaidPosition = rank <= 5;
               return (
                 <tr
                   key={entry.id}
                   ref={isCurrentUser ? currentUserRowRef : undefined}
                   className={`border-b border-slate-800 transition ${
                     isCurrentUser
-                      ? 'border border-fedRed/50 bg-red-900/10'
-                      : 'hover:bg-slate-800/40'
+                      ? 'bg-red-900/10 border-l-2 border-l-fedRed'
+                      : isPaidPosition
+                      ? 'bg-amber-900/5 border-l-2 border-l-amber-500/50'
+                      : 'hover:bg-slate-800/30'
                   }`}
                 >
-                  <td className="p-2 font-sans text-sm text-slate-400">
-                    {RANK_EMOJI[rank] ?? rank}
+                  <td className="p-3 font-sans text-slate-400 text-sm">
+                    <span className={isPaidPosition ? 'text-amber-400 font-bold' : ''}>
+                      {RANK_EMOJI[rank] ?? rank}
+                    </span>
+                    {isPaidPosition && rank > 3 && <span className="ml-1 text-[10px] text-amber-600" aria-label="Paid position">💰</span>}
                   </td>
-                  <td className="p-2 font-sans font-semibold text-sm text-white">
+                  <td className="p-3 font-sans font-semibold text-sm text-white">
                     {entry.displayName || 'Anonymous Entrant'}
                     {isCurrentUser && (
                       <span className="ml-2 text-xs text-fedRed font-sans uppercase tracking-widest">You</span>
                     )}
                   </td>
-                  <td className="p-2 text-center">
-                    {entry.isEliminated ? (
-                      <span className="text-red-400 bg-red-900/30 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider border border-red-500/30">Eliminated</span>
-                    ) : (
-                      <span className="text-green-400 bg-green-900/30 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider border border-green-500/30">Active</span>
-                    )}
-                  </td>
-                  <td className="p-2 text-center">
-                    {streak > 1 ? (
-                      <span className="text-orange-400 font-sans text-sm">🔥 {streak}</span>
-                    ) : (
-                      <span className="text-slate-600 text-sm">—</span>
-                    )}
-                  </td>
-                  <td className="p-2 text-right font-mono text-base font-bold text-fedRed">
+                  <td className="p-3 text-right font-mono text-sm font-bold text-fedRed">
                     {(entry.totalPoints ?? 0).toFixed(1)}
+                  </td>
+                  <td className="p-3 text-center">
+                    {entry.isEliminated ? (
+                      <span className="text-red-400 bg-red-900/30 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border border-red-500/30">Out</span>
+                    ) : (
+                      <span className="text-green-400 bg-green-900/30 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border border-green-500/30">Active</span>
+                    )}
+                  </td>
+                  <td className="p-3 text-center font-sans text-sm text-slate-300 whitespace-nowrap">
+                    {entry.currentPick ?? <span className="text-slate-600">—</span>}
+                  </td>
+                  <td className="p-3 text-center font-sans text-xs text-slate-400 whitespace-nowrap">
+                    {entry.finalFourPicks ? (
+                      <div className="space-y-0.5">
+                        {[entry.finalFourPicks.f1, entry.finalFourPicks.f2, entry.finalFourPicks.f3, entry.finalFourPicks.f4]
+                          .filter(Boolean)
+                          .map((t: string, i: number) => <div key={i} className="text-slate-300">{t}</div>)}
+                        {!entry.finalFourPicks.f1 && <span className="text-slate-600">—</span>}
+                      </div>
+                    ) : <span className="text-slate-600">—</span>}
+                  </td>
+                  <td className="p-3 text-center font-sans text-sm font-semibold text-red-400 whitespace-nowrap">
+                    {entry.finalFourPicks?.champ ?? <span className="text-slate-600">—</span>}
                   </td>
                 </tr>
               );
