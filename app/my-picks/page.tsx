@@ -235,10 +235,17 @@ export default function MyPicksPage() {
     return acc;
   }, {});
 
-  // Pending picks (not yet scored)
-  const pendingPicks = (userEntry?.survivorPicks ?? []).filter(
-    (p: any) => p.result !== 'win' && p.result !== 'loss'
-  );
+  // Pending picks (not yet scored), sorted chronologically by game time
+  const gamesById = new Map(games.map((g: any) => [g.id, g]));
+  const pendingPicks = (userEntry?.survivorPicks ?? [])
+    .filter((p: any) => p.result !== 'win' && p.result !== 'loss')
+    .sort((a: any, b: any) => {
+      const gameA = gamesById.get(a.gameId);
+      const gameB = gamesById.get(b.gameId);
+      const tA = new Date(gameA?.gameTime ?? gameA?.tipoff ?? gameA?.scheduledAt ?? 0).getTime();
+      const tB = new Date(gameB?.gameTime ?? gameB?.tipoff ?? gameB?.scheduledAt ?? 0).getTime();
+      return tA - tB;
+    });
 
   // Elite Eight picks (all, including scored and pending)
   const eliteEightPicks = (userEntry?.survivorPicks ?? []).filter(

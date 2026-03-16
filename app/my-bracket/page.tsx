@@ -3,12 +3,23 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase/clientApp';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+
+function getEasternGameDate(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+}
 
 export default function MyBracketPage() {
   const router = useRouter();
   const [entry, setEntry] = useState<any>(null);
+  const [games, setGames] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,6 +28,8 @@ export default function MyBracketPage() {
         const docRef = doc(db, 'entries', user.uid);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) setEntry(docSnap.data());
+        const gamesSnap = await getDocs(collection(db, 'games'));
+        setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       } else {
         router.push('/login');
       }
@@ -55,21 +68,37 @@ export default function MyBracketPage() {
           <h2 className="font-bebas text-2xl text-white mb-4 tracking-widest uppercase">Survivor History</h2>
           {entry.survivorPicks && entry.survivorPicks.length > 0 ? (
             <ul className="space-y-2">
-              {entry.survivorPicks.map((pick: any, i: number) => (
-                <li key={i} className="flex justify-between items-center border-b border-slate-700 pb-2">
-                  <div>
-                    <span className="text-slate-400 text-xs uppercase tracking-widest">{pick.round}</span>
-                    <p className="font-bebas text-lg text-white">{pick.team || pick.teamName}</p>
-                  </div>
-                  {pick.result === 'win' ? (
-                    <span className="text-green-400 text-lg">✅</span>
-                  ) : pick.result === 'loss' ? (
-                    <span className="text-red-400 text-lg">❌</span>
-                  ) : (
-                    <span className="text-slate-500 text-xs">Pending</span>
-                  )}
-                </li>
-              ))}
+              {(() => {
+                const gamesById = new Map(games.map((g: any) => [g.id, g]));
+                return [...entry.survivorPicks]
+                  .sort((a: any, b: any) => {
+                    const gameA = gamesById.get(a.gameId);
+                    const gameB = gamesById.get(b.gameId);
+                    const tA = new Date(gameA?.gameTime ?? gameA?.tipoff ?? gameA?.scheduledAt ?? 0).getTime();
+                    const tB = new Date(gameB?.gameTime ?? gameB?.tipoff ?? gameB?.scheduledAt ?? 0).getTime();
+                    return tA - tB;
+                  })
+                  .map((pick: any, i: number) => {
+                    const pickGame = gamesById.get(pick.gameId);
+                    const gt = pickGame?.gameTime ?? pickGame?.tipoff ?? pickGame?.scheduledAt ?? '';
+                    const dateLabel = gt ? getEasternGameDate(gt) : pick.round;
+                    return (
+                      <li key={i} className="flex justify-between items-center border-b border-slate-700 pb-2">
+                        <div>
+                          <span className="text-slate-400 text-xs uppercase tracking-widest">{dateLabel}</span>
+                          <p className="font-bebas text-lg text-white">{pick.team || pick.teamName}</p>
+                        </div>
+                        {pick.result === 'win' ? (
+                          <span className="text-green-400 text-lg">✅</span>
+                        ) : pick.result === 'loss' ? (
+                          <span className="text-red-400 text-lg">❌</span>
+                        ) : (
+                          <span className="text-slate-500 text-xs">Pending</span>
+                        )}
+                      </li>
+                    );
+                  });
+              })()}
             </ul>
           ) : (
             <p className="text-slate-500 italic">No survivor picks yet — games will appear on the My Picks page once the bracket is set.</p>
