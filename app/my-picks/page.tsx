@@ -488,7 +488,9 @@ export default function MyPicksPage() {
           <div className="mb-4">
             <p className="text-xs text-slate-500 uppercase tracking-wider mb-2 font-sans">Survivor Pick History</p>
             <div className="space-y-1">
-              {userEntry.survivorPicks.map((pick: any, i: number) => {
+              {[...(userEntry.survivorPicks as any[])].sort((a, b) =>
+                new Date(b.pickedAt ?? 0).getTime() - new Date(a.pickedAt ?? 0).getTime()
+              ).map((pick: any, i: number) => {
                 const pickGame = games.find((g: any) => g.id === pick.gameId);
                 const gt = pickGame?.gameTime ?? pickGame?.tipoff ?? pickGame?.scheduledAt ?? '';
                 const dayLabel = gt ? getEasternGameDate(gt) : (pick.dateKey ?? pick.round);
