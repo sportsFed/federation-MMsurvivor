@@ -88,11 +88,11 @@ export default function StandingsPage() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900/50 border-b border-slate-700">
-              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase w-12">#</th>
-              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase">Entrant</th>
-              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase text-center">Status</th>
-              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase text-center">Streak</th>
-              <th className="p-2 font-bebas text-slate-400 tracking-widest text-sm uppercase text-right">Points</th>
+              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase w-12">#</th>
+              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase">Entrant</th>
+              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Status</th>
+              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Streak</th>
+              <th className="p-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-right">Points</th>
             </tr>
           </thead>
           <tbody>
@@ -110,10 +110,10 @@ export default function StandingsPage() {
                       : 'hover:bg-slate-800/40'
                   }`}
                 >
-                  <td className="p-2 font-bebas text-xl text-slate-400">
+                  <td className="p-2 font-sans text-sm text-slate-400">
                     {RANK_EMOJI[rank] ?? rank}
                   </td>
-                  <td className="p-2 font-semibold text-white">
+                  <td className="p-2 font-sans font-semibold text-sm text-white">
                     {entry.displayName || 'Anonymous Entrant'}
                     {isCurrentUser && (
                       <span className="ml-2 text-xs text-fedRed font-sans uppercase tracking-widest">You</span>
@@ -128,7 +128,7 @@ export default function StandingsPage() {
                   </td>
                   <td className="p-2 text-center">
                     {streak > 1 ? (
-                      <span className="text-orange-400 font-bebas text-base">🔥 {streak}</span>
+                      <span className="text-orange-400 font-sans text-sm">🔥 {streak}</span>
                     ) : (
                       <span className="text-slate-600 text-sm">—</span>
                     )}
