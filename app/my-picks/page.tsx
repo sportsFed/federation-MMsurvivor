@@ -30,6 +30,12 @@ function getEasternDateKey(isoString: string): string {
   return d.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
 }
 
+function getDaySectionId(dateKey: string): string {
+  return `day-${dateKey.replace(/\//g, '-')}`;
+}
+
+const ELITE_EIGHT_REQUIRED_PICKS = 2;
+
 function formatCountdown(isoString: string, now: Date): string | null {
   const target = new Date(isoString);
   const diff = target.getTime() - now.getTime();
@@ -91,6 +97,19 @@ export default function MyPicksPage() {
     .filter((p: any) => p.result === 'win' || p.result === 'loss')
     .map((p: any) => p.team);
 
+  // Helper: derive effective dateKey for a pick (backward compat for picks without dateKey)
+  const getEffectivePickDateKey = (pick: any): string | null => {
+    if (pick.dateKey) return pick.dateKey;
+    if (pick.gameId) {
+      const g = games.find((g: any) => g.id === pick.gameId);
+      if (g) {
+        const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt;
+        return gt ? getEasternDateKey(gt) : null;
+      }
+    }
+    return null;
+  };
+
   const hasIncompleteFinalFourPicks = (entry: any) =>
     !entry?.finalFourPicks?.champ ||
     !entry?.finalFourPicks?.f1 ||
@@ -109,10 +128,14 @@ export default function MyPicksPage() {
       showMessage('This game has already started — pick is locked.');
       return;
     }
-    if (alreadyPickedTeams.includes(team) && team !== userEntry?.currentPick) {
+    if (alreadyPickedTeams.includes(team)) {
       showMessage(`You already used ${team} in a previous round.`, 4000);
       return;
     }
+
+    const gameDateKey = getEasternDateKey(game.gameTime ?? game.tipoff ?? game.scheduledAt ?? new Date().toISOString());
+    const isEliteEightGame = game.round === 'Elite Eight';
+
     try {
       const entryRef = doc(db, 'entries', userId);
       const newPickEntry = {
@@ -120,13 +143,50 @@ export default function MyPicksPage() {
         round: game.round,
         region: game.region,
         gameId: game.id,
+        dateKey: gameDateKey,
         pickedAt: new Date().toISOString(),
       };
-      // Replace any existing pick for this round, or add new
+
       const existingPicks: any[] = userEntry?.survivorPicks ?? [];
-      const updatedPicks = existingPicks.some((p: any) => p.round === game.round)
-        ? existingPicks.map((p: any) => p.round === game.round ? newPickEntry : p)
-        : [...existingPicks, newPickEntry];
+      let updatedPicks: any[];
+      let action: string;
+      let previousTeam: string | null;
+
+      if (isEliteEightGame) {
+        // Elite Eight: key by gameId, allow up to 2 total EE picks across the weekend
+        const hasPickForThisGame = existingPicks.some((p: any) => p.gameId === game.id);
+        const existingEEPicks = existingPicks.filter((p: any) => p.round === 'Elite Eight');
+        if (hasPickForThisGame) {
+          previousTeam = existingPicks.find((p: any) => p.gameId === game.id)?.team ?? null;
+          updatedPicks = existingPicks.map((p: any) => p.gameId === game.id ? newPickEntry : p);
+          action = 'changed';
+        } else if (existingEEPicks.length >= ELITE_EIGHT_REQUIRED_PICKS) {
+          showMessage('You already have 2 Elite Eight picks. Change one of your existing picks instead.');
+          return;
+        } else {
+          updatedPicks = [...existingPicks, newPickEntry];
+          previousTeam = null;
+          action = 'submitted';
+        }
+      } else {
+        // Standard round: one pick per calendar day, keyed by dateKey
+        // Backward compat: also resolve picks without dateKey via gameId lookup
+        const existingForDay = existingPicks.find(
+          (p: any) => getEffectivePickDateKey(p) === gameDateKey && p.round !== 'Elite Eight'
+        );
+        if (existingForDay) {
+          previousTeam = existingForDay.team ?? null;
+          updatedPicks = existingPicks.map((p: any) =>
+            getEffectivePickDateKey(p) === gameDateKey && p.round !== 'Elite Eight' ? newPickEntry : p
+          );
+          action = 'changed';
+        } else {
+          updatedPicks = [...existingPicks, newPickEntry];
+          previousTeam = null;
+          action = 'submitted';
+        }
+      }
+
       await updateDoc(entryRef, {
         survivorPicks: updatedPicks,
         currentPick: team,
@@ -140,8 +200,9 @@ export default function MyPicksPage() {
           round: game.round,
           region: game.region,
           gameId: game.id,
-          action: existingPicks.some((p: any) => p.round === game.round) ? 'changed' : 'submitted',
-          previousTeam: existingPicks.find((p: any) => p.round === game.round)?.team ?? null,
+          dateKey: gameDateKey,
+          action,
+          previousTeam,
           timestamp: new Date().toISOString(),
         });
       } catch {
@@ -174,28 +235,41 @@ export default function MyPicksPage() {
     return acc;
   }, {});
 
-  // Current round pick (pending, not yet scored)
-  const currentRoundPick = (userEntry?.survivorPicks ?? []).find(
+  // Pending picks (not yet scored)
+  const pendingPicks = (userEntry?.survivorPicks ?? []).filter(
     (p: any) => p.result !== 'win' && p.result !== 'loss'
   );
-  const currentPickTeam: string | undefined = currentRoundPick?.team ?? userEntry?.currentPick;
 
-  // Friday pick alert logic
-  const fridayDateKey = getEasternDateKey('2026-03-20T12:00:00-04:00');
-  const fridayGames = sortedGames.filter(g => {
-    const gameTime = g.gameTime ?? g.tipoff;
-    if (!gameTime) return false;
-    return getEasternDateKey(gameTime) === fridayDateKey;
+  // Elite Eight picks (all, including scored and pending)
+  const eliteEightPicks = (userEntry?.survivorPicks ?? []).filter(
+    (p: any) => p.round === 'Elite Eight'
+  );
+
+  // Per-day missing pick alerts for upcoming unlocked days (non-Elite Eight)
+  const missingPickDayAlerts: Array<{ dateKey: string; dayLabel: string; anchor: string }> = [];
+  Object.entries(gamesByDay).forEach(([dateKey, dayGames]) => {
+    const isEliteEightDay = (dayGames as any[]).some((g: any) => g.round === 'Elite Eight');
+    if (isEliteEightDay) return; // handled separately
+    const hasUnlockedGames = (dayGames as any[]).some((g: any) => {
+      const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt;
+      return gt && now < new Date(gt);
+    });
+    if (!hasUnlockedGames) return;
+    const hasPick = pendingPicks.some((p: any) => getEffectivePickDateKey(p) === dateKey);
+    if (!hasPick) {
+      const firstGame = (dayGames as any[])[0];
+      const gameTimeStr = firstGame.gameTime ?? firstGame.tipoff ?? '';
+      const dayLabel = gameTimeStr ? getEasternGameDate(gameTimeStr) : dateKey;
+      missingPickDayAlerts.push({ dateKey, dayLabel, anchor: getDaySectionId(dateKey) });
+    }
   });
-  const unlockedFridayGames = fridayGames.filter(g => {
-    const gameTime = g.gameTime ?? g.tipoff;
-    return gameTime && now < new Date(gameTime);
+
+  // Elite Eight alert: need 2 total picks across Sat/Sun window
+  const upcomingEliteEightGames = sortedGames.filter((g: any) => {
+    const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt;
+    return g.round === 'Elite Eight' && gt && now < new Date(gt);
   });
-  const currentPickIsFriday = fridayGames.some(g => {
-    const pick = (userEntry?.survivorPicks ?? []).find((p: any) => p.round === g.round && p.gameId === g.id);
-    return pick?.team === currentPickTeam;
-  });
-  const showFridayAlert = unlockedFridayGames.length > 0 && !currentPickIsFriday;
+  const showEliteEightAlert = upcomingEliteEightGames.length > 0 && eliteEightPicks.length < ELITE_EIGHT_REQUIRED_PICKS;
 
   if (loading) {
     return (
@@ -247,22 +321,41 @@ export default function MyPicksPage() {
         </div>
       )}
 
-      {/* Friday pick missing alert */}
-      {showFridayAlert && (
-        <div className="mb-4 p-3 rounded-lg bg-blue-900/20 border border-blue-600/40 text-blue-300 text-sm font-sans flex items-center justify-between">
-          <span>🗓️ You don&apos;t have a Friday game pick yet</span>
-          <a href="#friday-games" className="text-blue-400 underline hover:text-blue-300 text-xs font-semibold">
-            See Friday Games →
+      {/* Missing pick alerts for upcoming days */}
+      {missingPickDayAlerts.map(({ dateKey, dayLabel, anchor }) => (
+        <div key={dateKey} className="mb-4 p-3 rounded-lg bg-blue-900/20 border border-blue-600/40 text-blue-300 text-sm font-sans flex items-center justify-between">
+          <span>🗓️ No pick yet for <strong>{dayLabel}</strong></span>
+          <a href={`#${anchor}`} className="text-blue-400 underline hover:text-blue-300 text-xs font-semibold">
+            See Games →
+          </a>
+        </div>
+      ))}
+
+      {/* Elite Eight alert: need 2 total picks */}
+      {showEliteEightAlert && (
+        <div className="mb-4 p-3 rounded-lg bg-purple-900/20 border border-purple-600/40 text-purple-300 text-sm font-sans flex items-center justify-between">
+          <span>🏀 Elite Eight requires {ELITE_EIGHT_REQUIRED_PICKS} picks — {eliteEightPicks.length} of {ELITE_EIGHT_REQUIRED_PICKS} submitted</span>
+          <a href="#elite-eight-games" className="text-purple-400 underline hover:text-purple-300 text-xs font-semibold">
+            See Elite Eight →
           </a>
         </div>
       )}
 
-      {/* Current Pick Status */}
-      {currentPickTeam && (
-        <div className="mb-4 p-3 rounded-lg bg-slate-800/50 border border-slate-700 text-sm font-sans flex items-center gap-2">
-          <span className="text-green-400">✅</span>
-          <span className="text-slate-300">Your pick this round: <strong className="text-white">{currentPickTeam}</strong></span>
-          <span className="text-slate-500 text-xs ml-auto">You can change before tip-off</span>
+      {/* Current Pick Status — one banner per pending pick */}
+      {pendingPicks.length > 0 && (
+        <div className="mb-4 space-y-1">
+          {pendingPicks.map((pick: any, i: number) => {
+            const pickGame = games.find((g: any) => g.id === pick.gameId);
+            const gt = pickGame?.gameTime ?? pickGame?.tipoff ?? pickGame?.scheduledAt ?? '';
+            const dayLabel = gt ? getEasternGameDate(gt) : pick.round;
+            return (
+              <div key={i} className="p-3 rounded-lg bg-slate-800/50 border border-slate-700 text-sm font-sans flex items-center gap-2">
+                <span className="text-green-400">✅</span>
+                <span className="text-slate-300">{dayLabel}: <strong className="text-white">{pick.team}</strong></span>
+                <span className="text-slate-500 text-xs ml-auto">Change before tip-off</span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -294,9 +387,10 @@ export default function MyPicksPage() {
         Object.entries(gamesByDay).map(([dateKey, dayGames]) => {
           const gameTimeStr = dayGames[0].gameTime ?? dayGames[0].tipoff ?? '';
           const dayLabel = gameTimeStr ? getEasternGameDate(gameTimeStr) : dateKey;
-          const isFriday = gameTimeStr ? getEasternDateKey(gameTimeStr) === fridayDateKey : false;
+          const isEliteEightDay = (dayGames as any[]).some((g: any) => g.round === 'Elite Eight');
+          const sectionId = isEliteEightDay ? 'elite-eight-games' : getDaySectionId(dateKey);
           return (
-            <div id={isFriday ? 'friday-games' : undefined} key={dateKey}>
+            <div id={sectionId} key={dateKey}>
               <div className="flex items-center gap-3 my-4">
                 <div className="flex-1 h-px bg-slate-700" />
                 <span className="text-xs text-slate-400 uppercase tracking-widest font-sans font-semibold">{dayLabel}</span>
@@ -307,8 +401,8 @@ export default function MyPicksPage() {
                 const isLocked = gameTime ? now >= new Date(gameTime) : game.isComplete;
                 const easternTime = gameTime ? formatEasternTime(gameTime) : null;
                 const countdown = (!isLocked && gameTime) ? formatCountdown(gameTime, now) : null;
-                const gameRoundPick = (userEntry?.survivorPicks ?? []).find((p: any) => p.round === game.round);
-                const thisGamePickTeam = gameRoundPick?.team;
+                const gamePickEntry = (userEntry?.survivorPicks ?? []).find((p: any) => p.gameId === game.id);
+                const thisGamePickTeam = gamePickEntry?.team;
 
                 return (
                   <div
@@ -335,6 +429,11 @@ export default function MyPicksPage() {
                         ) : null}
                       </div>
                     </div>
+                    {game.round === 'Elite Eight' && (
+                      <div className="mb-2 text-[10px] text-purple-400 font-sans">
+                        Elite Eight — pick {ELITE_EIGHT_REQUIRED_PICKS} teams this weekend · {eliteEightPicks.length} of {ELITE_EIGHT_REQUIRED_PICKS} submitted
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       {[
                         { team: game.homeTeam, seed: game.homeSeed },
@@ -389,15 +488,23 @@ export default function MyPicksPage() {
           <div className="mb-4">
             <p className="text-xs text-slate-500 uppercase tracking-wider mb-2 font-sans">Survivor Pick History</p>
             <div className="space-y-1">
-              {userEntry.survivorPicks.map((pick: any, i: number) => (
-                <div key={i} className="flex items-center justify-between bg-slate-800/30 rounded px-3 py-1.5 text-sm font-sans">
-                  <span className="text-slate-400 text-xs">{pick.round} · {pick.region}</span>
-                  <span className="text-white font-medium">{pick.team}</span>
-                  <span>
-                    {pick.result === 'win' ? '✅' : pick.result === 'loss' ? '❌' : <span className="text-slate-600 text-xs">Pending</span>}
-                  </span>
-                </div>
-              ))}
+              {userEntry.survivorPicks.map((pick: any, i: number) => {
+                const pickGame = games.find((g: any) => g.id === pick.gameId);
+                const gt = pickGame?.gameTime ?? pickGame?.tipoff ?? pickGame?.scheduledAt ?? '';
+                const dayLabel = gt ? getEasternGameDate(gt) : (pick.dateKey ?? pick.round);
+                return (
+                  <div key={i} className="flex items-center justify-between bg-slate-800/30 rounded px-3 py-1.5 text-sm font-sans">
+                    <div className="flex flex-col">
+                      <span className="text-slate-400 text-xs">{pick.round} · {pick.region}</span>
+                      <span className="text-slate-500 text-[10px]">{dayLabel}</span>
+                    </div>
+                    <span className="text-white font-medium">{pick.team}</span>
+                    <span>
+                      {pick.result === 'win' ? '✅' : pick.result === 'loss' ? '❌' : <span className="text-slate-600 text-xs">Pending</span>}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
