@@ -45,6 +45,20 @@ export default function MyPicksPage() {
 
   const alreadyPickedTeams: string[] = userEntry?.survivorPicks?.map((p: any) => p.team) ?? [];
 
+  const hasIncompleteFinalFourPicks = (entry: any) =>
+    !entry?.finalFourPicks?.champ ||
+    !entry?.finalFourPicks?.f1 ||
+    !entry?.finalFourPicks?.f2 ||
+    !entry?.finalFourPicks?.f3 ||
+    !entry?.finalFourPicks?.f4;
+
+  const sortedGames = [...games].sort((a, b) => {
+    const aTime = a.gameTime ?? a.tipoff ?? a.scheduledAt ?? null;
+    const bTime = b.gameTime ?? b.tipoff ?? b.scheduledAt ?? null;
+    if (aTime && bTime) return new Date(aTime).getTime() - new Date(bTime).getTime();
+    return (a.homeSeed ?? 99) - (b.homeSeed ?? 99);
+  });
+
   const handlePickTeam = async (team: string, game: any) => {
     if (!userId || !userEntry) {
       showMessage('You must be logged in to submit a pick.');
@@ -105,8 +119,8 @@ export default function MyPicksPage() {
         <div>
           <h1 className="font-bebas text-5xl tracking-tighter italic text-white uppercase">My Picks</h1>
           {userEntry?.displayName && (
-            <p className="text-fedRed font-bebas text-xl tracking-widest uppercase">
-              Welcome, {userEntry.displayName}
+            <p className="font-bebas text-2xl tracking-widest uppercase text-fedRed">
+              ENTRY: {userEntry.displayName}
             </p>
           )}
           <p className="text-slate-400 font-bebas text-lg tracking-widest uppercase">The Federation</p>
@@ -122,6 +136,17 @@ export default function MyPicksPage() {
       {pickMessage && (
         <div className="mb-4 mx-2 p-3 rounded bg-green-900/40 border border-green-500/50 text-green-400 text-sm">
           {pickMessage}
+        </div>
+      )}
+
+      {/* Pre-Tournament Picks incomplete alert */}
+      {userEntry && hasIncompleteFinalFourPicks(userEntry) && (
+        <div className="mb-6 mx-2 p-3 rounded bg-amber-900/30 border border-amber-500/50 text-amber-300 text-sm flex items-center gap-2">
+          <span>⚠️ Complete your Pre-Tournament Picks before tip-off!</span>
+          <span>→</span>
+          <a href="/final-four" className="text-fedRed underline font-semibold hover:text-red-400 transition-colors">
+            Pre-Tournament Picks
+          </a>
         </div>
       )}
 
@@ -166,11 +191,11 @@ export default function MyPicksPage() {
             <p className="text-slate-500 text-xs uppercase tracking-widest font-bold">Check back after Selection Sunday!</p>
           </div>
         ) : (
-          games.map((game) => (
-            <div key={game.id} className="glass-panel p-5 flex items-center justify-between border-l-4 border-l-fedRed transition-all active:scale-[0.98]">
+          sortedGames.map((game) => (
+            <div key={game.id} className="glass-panel p-3 flex items-center justify-between border-l-4 border-l-fedRed transition-all active:scale-[0.98]">
               <div className="flex flex-col">
-                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">{game.region} — {game.round || 'Tournament Game'}</span>
-                <span className="font-bebas text-2xl text-white tracking-wide uppercase">
+                <span className="text-[9px] text-slate-500 uppercase font-bold tracking-widest mb-1">{game.region} — {game.round || 'Tournament Game'}</span>
+                <span className="font-bebas text-lg text-white tracking-wide uppercase">
                   #{game.homeSeed} {game.homeTeam} vs #{game.awaySeed} {game.awayTeam}
                 </span>
                 {game.isComplete && game.winner && (
@@ -180,7 +205,7 @@ export default function MyPicksPage() {
               {!game.isComplete && (
                 <button
                   onClick={() => setPickModal({ game })}
-                  className="bg-slate-800 hover:bg-fedRed text-white px-6 py-2 rounded font-bebas text-xl transition-colors uppercase italic"
+                  className="bg-slate-800 hover:bg-fedRed text-white px-4 py-1.5 rounded font-bebas text-base transition-colors uppercase italic"
                 >
                   Pick Team
                 </button>
