@@ -2,17 +2,40 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { db, auth } from '@/lib/firebase/clientApp';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };
 
+// March 19, 2026 12:15 PM ET (UTC-4 = 16:15 UTC)
+const FINAL_FOUR_DEADLINE = new Date('2026-03-19T16:15:00Z');
+
+function isDeadlinePassed(now: Date): boolean {
+  return now >= FINAL_FOUR_DEADLINE;
+}
+
+function isGameLocked(gameId: string | undefined, games: any[], now: Date): boolean {
+  if (!gameId) return false;
+  const game = games.find((g: any) => g.id === gameId);
+  if (!game) return false;
+  const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
+  if (gameTime) return now >= new Date(gameTime);
+  return game.isComplete ?? false;
+}
+
 export default function StandingsPage() {
   const [entries, setEntries] = useState<any[]>([]);
+  const [games, setGames] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const currentUserRowRef = useRef<HTMLTableRowElement | null>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (currentUserId && entries.length > 0) {
@@ -25,6 +48,14 @@ export default function StandingsPage() {
       setCurrentUserId(user?.uid ?? null);
     });
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    getDocs(collection(db, 'games')).then((snap) => {
+      setGames(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }).catch((err) => {
+      console.error('Failed to load games for standings:', err);
+    });
   }, []);
 
   useEffect(() => {
@@ -89,6 +120,14 @@ export default function StandingsPage() {
               const rank = index + 1;
               const isCurrentUser = entry.id === currentUserId;
               const isPaidPosition = rank <= 5;
+              const deadlinePassed = isDeadlinePassed(now);
+              const showFinalFourPicks = isCurrentUser || deadlinePassed;
+
+              // Determine survivor pick visibility: only show once the pick's game has tipped off
+              const latestSurvivorPick = [...(entry.survivorPicks ?? [])]
+                .sort((a: any, b: any) => new Date(b.pickedAt ?? 0).getTime() - new Date(a.pickedAt ?? 0).getTime())[0];
+              const survivorPickLocked = isGameLocked(latestSurvivorPick?.gameId, games, now);
+
               return (
                 <tr
                   key={entry.id}
@@ -124,20 +163,34 @@ export default function StandingsPage() {
                     )}
                   </td>
                   <td className="p-3 text-center font-sans text-sm text-slate-300 whitespace-nowrap">
-                    {entry.currentPick ?? <span className="text-slate-600">—</span>}
+                    {entry.currentPick ? (
+                      survivorPickLocked
+                        ? entry.currentPick
+                        : <span className="text-slate-500 italic text-xs">Pending</span>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
                   </td>
                   <td className="p-3 text-center font-sans text-xs text-slate-400 whitespace-nowrap">
-                    {entry.finalFourPicks ? (
-                      <div className="space-y-0.5">
-                        {[entry.finalFourPicks.f1, entry.finalFourPicks.f2, entry.finalFourPicks.f3, entry.finalFourPicks.f4]
-                          .filter(Boolean)
-                          .map((t: string, i: number) => <div key={i} className="text-slate-300">{t}</div>)}
-                        {!entry.finalFourPicks.f1 && <span className="text-slate-600">—</span>}
-                      </div>
-                    ) : <span className="text-slate-600">—</span>}
+                    {showFinalFourPicks ? (
+                      entry.finalFourPicks ? (
+                        <div className="space-y-0.5">
+                          {[entry.finalFourPicks.f1, entry.finalFourPicks.f2, entry.finalFourPicks.f3, entry.finalFourPicks.f4]
+                            .filter(Boolean)
+                            .map((t: string, i: number) => <div key={i} className="text-slate-300">{t}</div>)}
+                          {!entry.finalFourPicks.f1 && <span className="text-slate-600">—</span>}
+                        </div>
+                      ) : <span className="text-slate-600">—</span>
+                    ) : (
+                      <span className="text-slate-500 italic text-xs">Locked</span>
+                    )}
                   </td>
                   <td className="p-3 text-center font-sans text-sm font-semibold text-red-400 whitespace-nowrap">
-                    {entry.finalFourPicks?.champ ?? <span className="text-slate-600">—</span>}
+                    {showFinalFourPicks ? (
+                      entry.finalFourPicks?.champ ?? <span className="text-slate-600">—</span>
+                    ) : (
+                      <span className="text-slate-500 italic text-xs font-normal">Locked</span>
+                    )}
                   </td>
                 </tr>
               );
