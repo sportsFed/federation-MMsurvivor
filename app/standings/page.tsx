@@ -26,6 +26,7 @@ function isGameLocked(gameId: string | undefined, games: any[], now: Date): bool
 export default function StandingsPage() {
   const [entries, setEntries] = useState<any[]>([]);
   const [games, setGames] = useState<any[]>([]);
+  const [gamesLoaded, setGamesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
@@ -53,8 +54,10 @@ export default function StandingsPage() {
   useEffect(() => {
     getDocs(collection(db, 'games')).then((snap) => {
       setGames(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setGamesLoaded(true);
     }).catch((err) => {
       console.error('Failed to load games for standings:', err);
+      setGamesLoaded(true); // mark loaded even on error so UI isn't permanently blocked
     });
   }, []);
 
@@ -123,10 +126,18 @@ export default function StandingsPage() {
               const deadlinePassed = isDeadlinePassed(now);
               const showFinalFourPicks = isCurrentUser || deadlinePassed;
 
-              // Determine survivor pick visibility: only show once the pick's game has tipped off
-              const latestSurvivorPick = [...(entry.survivorPicks ?? [])]
-                .sort((a: any, b: any) => new Date(b.pickedAt ?? 0).getTime() - new Date(a.pickedAt ?? 0).getTime())[0];
-              const survivorPickLocked = isGameLocked(latestSurvivorPick?.gameId, games, now);
+              // Determine survivor pick visibility: only show once the pick's game has tipped off.
+              // Prefer the first pending (unscored) pick so a future game's pick stays hidden
+              // even if a previous game's pick was the most recently submitted one.
+              const allSurvivorPicks: any[] = entry.survivorPicks ?? [];
+              const pendingSurvivorPick = allSurvivorPicks.find((p: any) => !p.result);
+              const latestSurvivorPick = pendingSurvivorPick ?? allSurvivorPicks
+                .reduce<any>((latest, p) =>
+                  !latest || new Date(p.pickedAt ?? 0) > new Date(latest.pickedAt ?? 0) ? p : latest,
+                  null);
+              // Only mark locked once the games collection has confirmed loading;
+              // default to hidden (false) while games are still being fetched.
+              const survivorPickLocked = gamesLoaded && isGameLocked(latestSurvivorPick?.gameId, games, now);
 
               return (
                 <tr
