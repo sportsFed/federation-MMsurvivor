@@ -4,6 +4,44 @@ import { db } from '@/lib/firebase/adminApp';
 import { validateAdminSession } from '@/lib/adminAuth';
 import { clearCollection } from '@/lib/firestoreUtils';
 
+// Tip-off times (EDT = UTC-4) for each Round of 64 matchup keyed as "Region-homeSeed-awaySeed"
+const GAME_TIMES: Record<string, string> = {
+  // Thursday, March 19
+  'East-6-11':    '2026-03-19T12:15:00-04:00',
+  'South-3-14':   '2026-03-19T12:40:00-04:00',
+  'South-5-12':   '2026-03-19T13:40:00-04:00',
+  'West-4-13':    '2026-03-19T14:00:00-04:00',
+  'East-3-14':    '2026-03-19T14:45:00-04:00',
+  'South-6-11':   '2026-03-19T15:10:00-04:00',
+  'South-4-13':   '2026-03-19T16:10:00-04:00',
+  'West-5-12':    '2026-03-19T16:30:00-04:00',
+  'Midwest-1-16': '2026-03-19T18:50:00-04:00',
+  'East-8-9':     '2026-03-19T19:10:00-04:00',
+  'South-7-10':   '2026-03-19T19:25:00-04:00',
+  'West-3-14':    '2026-03-19T19:35:00-04:00',
+  'Midwest-8-9':  '2026-03-19T21:20:00-04:00',
+  'East-1-16':    '2026-03-19T21:40:00-04:00',
+  'South-2-15':   '2026-03-19T21:55:00-04:00',
+  'West-6-11':    '2026-03-19T22:05:00-04:00',
+  // Friday, March 20
+  'South-8-9':    '2026-03-20T12:15:00-04:00',
+  'East-2-15':    '2026-03-20T12:40:00-04:00',
+  'Midwest-7-10': '2026-03-20T13:40:00-04:00',
+  'East-4-13':    '2026-03-20T14:00:00-04:00',
+  'South-1-16':   '2026-03-20T14:45:00-04:00',
+  'East-7-10':    '2026-03-20T15:10:00-04:00',
+  'Midwest-2-15': '2026-03-20T16:10:00-04:00',
+  'East-5-12':    '2026-03-20T16:30:00-04:00',
+  'Midwest-4-13': '2026-03-20T18:50:00-04:00',
+  'Midwest-6-11': '2026-03-20T19:10:00-04:00',
+  'West-2-15':    '2026-03-20T19:25:00-04:00',
+  'West-1-16':    '2026-03-20T19:35:00-04:00',
+  'Midwest-5-12': '2026-03-20T21:20:00-04:00',
+  'Midwest-3-14': '2026-03-20T21:40:00-04:00',
+  'West-7-10':    '2026-03-20T21:55:00-04:00',
+  'West-8-9':     '2026-03-20T22:05:00-04:00',
+};
+
 // Standard matchup pairings for Round of 64: 1v16, 2v15, 3v14, 4v13, 5v12, 6v11, 7v10, 8v9
 const MATCHUP_PAIRS = [
   [1, 16],
@@ -46,6 +84,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        const gameTimeKey = `${region}-${highSeed}-${lowSeed}`;
         const newDoc = gamesRef.doc();
         batch.set(newDoc, {
           homeTeam: homeTeam.name,
@@ -54,7 +93,7 @@ export async function POST(request: NextRequest) {
           awaySeed: lowSeed,
           region,
           round: 'Round of 64',
-          gameDate: body.gameDate ?? null,
+          gameDate: GAME_TIMES[gameTimeKey] ?? null,
           winner: null,
           isComplete: false,
           createdAt: new Date().toISOString(),
