@@ -45,7 +45,7 @@ export default function Navbar() {
             <Link
               key={href}
               href={href}
-              className={`font-bebas text-lg tracking-widest transition-colors ${
+              className={`font-sans font-semibold text-sm tracking-wide transition-colors ${
                 pathname === href
                   ? 'text-fedRed border-b-2 border-fedRed pb-0.5'
                   : 'text-slate-300 hover:text-white'
@@ -93,7 +93,7 @@ export default function Navbar() {
               key={href}
               href={href}
               onClick={() => setMenuOpen(false)}
-              className={`font-bebas text-xl tracking-widest transition-colors ${
+              className={`font-sans font-semibold text-sm tracking-wide transition-colors ${
                 pathname === href ? 'text-fedRed' : 'text-slate-300 hover:text-white'
               }`}
             >

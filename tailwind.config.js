@@ -13,6 +13,7 @@ module.exports = {
         fedRed: '#dc2626',
       },
       fontFamily: {
+        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
         bebas: ['var(--font-bebas)', 'sans-serif'],
       },
     },

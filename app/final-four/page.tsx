@@ -57,7 +57,9 @@ export default function FinalFourPage() {
   };
 
   const teamsForRegion = (region: string) =>
-    teams.filter((t) => t.region === region);
+    teams
+      .filter((t) => t.region === region)
+      .sort((a, b) => (a.regionalSeed ?? 99) - (b.regionalSeed ?? 99));
 
   const champTeams = [...teams].sort(
     (a, b) => (a.nationalSeed ?? 99) - (b.nationalSeed ?? 99)
@@ -82,12 +84,12 @@ export default function FinalFourPage() {
       <h1 className="font-bebas text-5xl tracking-widest italic text-white uppercase mb-2">
         Pre-Tournament Picks
       </h1>
-      <p className="text-slate-400 mb-8 text-sm">
+      <p className="text-slate-400 mb-8 text-sm font-sans">
         Select your Final Four teams and National Champion. These lock at tip-off.
       </p>
 
       {locked && (
-        <div className="mb-6 p-3 rounded bg-amber-900/30 border border-amber-500/50 text-amber-400 text-sm">
+        <div className="mb-6 p-3 rounded bg-amber-900/30 border border-amber-500/50 text-amber-400 text-sm font-sans">
           🔒 Your picks are locked and cannot be changed.
         </div>
       )}
@@ -98,14 +100,14 @@ export default function FinalFourPage() {
           const regionTeams = teamsForRegion(region);
           return (
             <div key={slot} className="glass-panel p-5 border border-slate-700">
-              <label className="block font-bebas text-lg tracking-widest text-fedRed uppercase mb-3">
+              <label className="block font-sans font-semibold text-sm text-fedRed uppercase tracking-wider mb-3">
                 {region} Region — Final Four Pick
               </label>
               <select
                 value={picks[slot]}
                 onChange={(e) => !locked && setPicks({ ...picks, [slot]: e.target.value })}
                 disabled={locked}
-                className="w-full bg-slate-900 border border-slate-700 text-white rounded p-2 font-bebas tracking-wide text-base disabled:opacity-50"
+                className="w-full bg-slate-900 border border-slate-700 text-white rounded p-2 font-sans text-sm disabled:opacity-50"
               >
                 <option value="">Select a Team...</option>
                 {regionTeams.map((t) => (
@@ -127,7 +129,7 @@ export default function FinalFourPage() {
           value={picks.champ}
           onChange={(e) => !locked && setPicks({ ...picks, champ: e.target.value })}
           disabled={locked}
-          className="w-full bg-slate-900 border border-slate-700 text-white rounded p-2 font-bebas tracking-wide text-base disabled:opacity-50"
+          className="w-full bg-slate-900 border border-slate-700 text-white rounded p-2 font-sans text-sm disabled:opacity-50"
         >
           <option value="">Select Champion...</option>
           {champTeams.map((t) => (
@@ -139,7 +141,7 @@ export default function FinalFourPage() {
       </div>
 
       {saveMessage && (
-        <div className="mb-4 p-3 rounded bg-green-900/40 border border-green-500/50 text-green-400 text-sm">
+        <div className="mb-4 p-3 rounded bg-green-900/40 border border-green-500/50 text-green-400 text-sm font-sans">
           {saveMessage}
         </div>
       )}
@@ -148,7 +150,7 @@ export default function FinalFourPage() {
         <button
           onClick={savePicks}
           disabled={locked}
-          className="bg-fedRed hover:bg-red-700 text-white font-bebas tracking-widest text-xl px-10 py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase italic"
+          className="bg-fedRed hover:bg-red-700 text-white font-sans font-semibold tracking-wide text-base px-10 py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase"
         >
           Save All Picks
         </button>
