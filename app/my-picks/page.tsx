@@ -3,8 +3,18 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase/clientApp';
-import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+
+function formatLocalTime(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function getGameDate(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+}
 
 export default function MyPicksPage() {
   const router = useRouter();
@@ -41,7 +51,10 @@ export default function MyPicksPage() {
     return () => unsubscribe();
   }, [router]);
 
-  const alreadyPickedTeams: string[] = userEntry?.survivorPicks?.map((p: any) => p.team) ?? [];
+  // Only count teams from rounds that have already been scored as "used"
+  const alreadyPickedTeams: string[] = (userEntry?.survivorPicks ?? [])
+    .filter((p: any) => p.result === 'win' || p.result === 'loss')
+    .map((p: any) => p.team);
 
   const hasIncompleteFinalFourPicks = (entry: any) =>
     !entry?.finalFourPicks?.champ ||
@@ -55,70 +68,65 @@ export default function MyPicksPage() {
       showMessage('You must be logged in to submit a pick.');
       return;
     }
-    if (alreadyPickedTeams.includes(team)) {
-      showMessage(`You have already picked ${team} in a previous round.`, 4000);
+    // Check game hasn't started
+    const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
+    if (gameTime && new Date() >= new Date(gameTime)) {
+      showMessage('This game has already started — pick is locked.');
       return;
     }
-    if (userEntry?.currentPick) {
-      showMessage('You have already made a pick this round.');
+    if (alreadyPickedTeams.includes(team) && team !== userEntry?.currentPick) {
+      showMessage(`You already used ${team} in a previous round.`, 4000);
       return;
     }
     try {
       const entryRef = doc(db, 'entries', userId);
-      const pickEntry = {
+      const newPickEntry = {
         team,
         round: game.round,
         region: game.region,
         gameId: game.id,
         pickedAt: new Date().toISOString(),
       };
+      // Replace any existing pick for this round, or add new
+      const existingPicks: any[] = userEntry?.survivorPicks ?? [];
+      const updatedPicks = existingPicks.some((p: any) => p.round === game.round)
+        ? existingPicks.map((p: any) => p.round === game.round ? newPickEntry : p)
+        : [...existingPicks, newPickEntry];
       await updateDoc(entryRef, {
-        survivorPicks: arrayUnion(pickEntry),
+        survivorPicks: updatedPicks,
         currentPick: team,
       });
       setUserEntry((prev: any) => ({
         ...prev,
-        survivorPicks: [...(prev?.survivorPicks ?? []), pickEntry],
+        survivorPicks: updatedPicks,
         currentPick: team,
       }));
-      showMessage(`✅ Pick submitted: ${team}`);
+      showMessage(`✅ Pick updated: ${team}`);
     } catch (err: any) {
-      showMessage(`Error submitting pick: ${err.message}`);
+      showMessage(`Error: ${err.message}`);
     }
   };
 
-  // Sort games chronologically, then group by day
+  // Sort games chronologically
   const sortedGames = [...games].sort((a, b) => {
-    const aTime = a.gameTime ?? a.tipoff ?? a.scheduledAt ?? null;
-    const bTime = b.gameTime ?? b.tipoff ?? b.scheduledAt ?? null;
-    if (aTime && bTime) return new Date(aTime).getTime() - new Date(bTime).getTime();
-    return (a.homeSeed ?? 99) - (b.homeSeed ?? 99);
+    const aTime = new Date(a.gameTime ?? a.tipoff ?? 0).getTime();
+    const bTime = new Date(b.gameTime ?? b.tipoff ?? 0).getTime();
+    return aTime - bTime;
   });
 
-  const gamesByDay: Record<string, any[]> = {};
-  for (const game of sortedGames) {
-    const rawTime = game.gameTime ?? game.tipoff ?? game.scheduledAt ?? null;
-    const dayKey = rawTime
-      ? new Date(rawTime).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-      : 'TBD';
-    if (!gamesByDay[dayKey]) gamesByDay[dayKey] = [];
-    gamesByDay[dayKey].push(game);
-  }
+  // Group by calendar date (in local timezone)
+  const gamesByDay = sortedGames.reduce((acc: Record<string, any[]>, game) => {
+    const dateKey = new Date(game.gameTime ?? game.tipoff ?? 0).toLocaleDateString();
+    if (!acc[dateKey]) acc[dateKey] = [];
+    acc[dateKey].push(game);
+    return acc;
+  }, {});
 
-  const formatGameTime = (game: any): string | null => {
-    const rawTime = game.gameTime ?? game.tipoff ?? game.scheduledAt ?? null;
-    if (!rawTime) return null;
-    try {
-      return new Date(rawTime).toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZone: 'America/New_York',
-        timeZoneName: 'short',
-      });
-    } catch {
-      return null;
-    }
-  };
+  // Current round pick (pending, not yet scored)
+  const currentRoundPick = (userEntry?.survivorPicks ?? []).find(
+    (p: any) => p.result !== 'win' && p.result !== 'loss'
+  );
+  const currentPickTeam: string | undefined = currentRoundPick?.team ?? userEntry?.currentPick;
 
   if (loading) {
     return (
@@ -171,14 +179,15 @@ export default function MyPicksPage() {
       )}
 
       {/* Current Pick Status */}
-      {userEntry?.currentPick && (
+      {currentPickTeam && (
         <div className="mb-4 p-3 rounded-lg bg-slate-800/50 border border-slate-700 text-sm font-sans flex items-center gap-2">
           <span className="text-green-400">✅</span>
-          <span className="text-slate-300">Your pick this round: <strong className="text-white">{userEntry.currentPick}</strong></span>
+          <span className="text-slate-300">Your pick this round: <strong className="text-white">{currentPickTeam}</strong></span>
+          <span className="text-slate-500 text-xs ml-auto">You can change before tip-off</span>
         </div>
       )}
 
-      {/* Previously Picked */}
+      {/* Previously Picked (scored rounds only) */}
       {alreadyPickedTeams.length > 0 && (
         <div className="mb-4">
           <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-2">Used Picks</p>
@@ -203,65 +212,86 @@ export default function MyPicksPage() {
           <p className="text-slate-500 text-xs uppercase tracking-widest font-sans font-bold">Check back after Selection Sunday!</p>
         </div>
       ) : (
-        Object.entries(gamesByDay).map(([day, dayGames]) => (
-          <div key={day}>
-            {/* Day divider */}
-            <div className="flex items-center gap-3 my-4">
-              <div className="flex-1 h-px bg-slate-700" />
-              <span className="text-xs text-slate-500 uppercase tracking-widest font-sans">{day}</span>
-              <div className="flex-1 h-px bg-slate-700" />
-            </div>
-            {dayGames.map((game) => {
-              const gameTimeLabel = formatGameTime(game);
-              return (
-                <div key={game.id} className="bg-slate-800/40 border border-slate-700 rounded-xl p-3 mb-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
-                      {game.region} · {game.round || 'Round of 64'}
-                    </span>
-                    {gameTimeLabel && (
-                      <span className="text-[11px] text-slate-400 font-sans">{gameTimeLabel}</span>
+        Object.entries(gamesByDay).map(([dateKey, dayGames]) => {
+          const dayLabel = getGameDate(dayGames[0].gameTime ?? dayGames[0].tipoff ?? '');
+          return (
+            <div key={dateKey}>
+              <div className="flex items-center gap-3 my-4">
+                <div className="flex-1 h-px bg-slate-700" />
+                <span className="text-xs text-slate-400 uppercase tracking-widest font-sans font-semibold">{dayLabel}</span>
+                <div className="flex-1 h-px bg-slate-700" />
+              </div>
+              {dayGames.map((game) => {
+                const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
+                const isLocked = gameTime ? new Date() >= new Date(gameTime) : game.isComplete;
+                const localTime = gameTime ? formatLocalTime(gameTime) : null;
+                const gameRoundPick = (userEntry?.survivorPicks ?? []).find((p: any) => p.round === game.round);
+                const thisGamePickTeam = gameRoundPick?.team;
+
+                return (
+                  <div
+                    key={game.id}
+                    className={`bg-slate-800/40 border rounded-xl p-3 mb-2 transition-all ${
+                      isLocked ? 'border-slate-700/50 opacity-70' : 'border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
+                        {game.region} · {game.round || 'Round of 64'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {game.network && (
+                          <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-sans">{game.network}</span>
+                        )}
+                        {localTime && (
+                          <span className="text-[11px] text-slate-400 font-sans">{localTime}</span>
+                        )}
+                        {isLocked && <span className="text-[11px]">🔒</span>}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { team: game.homeTeam, seed: game.homeSeed },
+                        { team: game.awayTeam, seed: game.awaySeed },
+                      ].map(({ team, seed }) => {
+                        const isThisRoundPick = thisGamePickTeam === team;
+                        const isUsedInPrevRound = alreadyPickedTeams.includes(team);
+                        const canPick = !isLocked && !game.isComplete && !isUsedInPrevRound;
+                        return (
+                          <button
+                            key={team}
+                            onClick={() => canPick && handlePickTeam(team, game)}
+                            disabled={!canPick}
+                            className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left ${
+                              isThisRoundPick
+                                ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-pointer hover:bg-green-700/60'
+                                : isUsedInPrevRound
+                                ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
+                                : isLocked || game.isComplete
+                                ? 'bg-slate-800/60 border border-slate-700/40 text-slate-500 cursor-default'
+                                : 'bg-slate-700/60 hover:bg-red-700/50 hover:border-red-500/50 border border-slate-600 text-white cursor-pointer'
+                            }`}
+                          >
+                            <span className="text-[10px] text-slate-500 block mb-0.5">#{seed}</span>
+                            <span className="block leading-tight text-xs">{team}</span>
+                            {isThisRoundPick && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
+                            {isUsedInPrevRound && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
+                            {isLocked && !isThisRoundPick && !isUsedInPrevRound && (
+                              <span className="text-[10px] text-slate-600 mt-0.5 block">Locked</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {game.isComplete && game.winner && (
+                      <p className="text-xs text-green-400 mt-2 font-sans">✓ Final: {game.winner} won</p>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { team: game.homeTeam, seed: game.homeSeed },
-                      { team: game.awayTeam, seed: game.awaySeed },
-                    ].map(({ team, seed }) => {
-                      const used = alreadyPickedTeams.includes(team);
-                      const isPicked = userEntry?.currentPick === team;
-                      const disabled = used || game.isComplete || !!userEntry?.currentPick;
-                      return (
-                        <button
-                          key={team}
-                          onClick={() => !disabled && handlePickTeam(team, game)}
-                          disabled={disabled}
-                          className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left ${
-                            isPicked
-                              ? 'bg-green-700/40 border border-green-500/60 text-green-300'
-                              : used
-                              ? 'bg-slate-800 border border-slate-700 text-slate-600 cursor-not-allowed'
-                              : game.isComplete
-                              ? 'bg-slate-800 border border-slate-700 text-slate-500 cursor-default'
-                              : 'bg-slate-700 hover:bg-red-700/60 hover:border-red-500/60 border border-slate-600 text-white cursor-pointer'
-                          }`}
-                        >
-                          <span className="text-[10px] text-slate-500 block mb-0.5">#{seed}</span>
-                          <span className="block leading-tight">{team}</span>
-                          {isPicked && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
-                          {used && !isPicked && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {game.isComplete && game.winner && (
-                    <p className="text-xs text-green-400 mt-2 font-sans">✓ Final: {game.winner} won</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))
+                );
+              })}
+            </div>
+          );
+        })
       )}
 
       {/* Summary Section */}

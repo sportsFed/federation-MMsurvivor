@@ -42,6 +42,44 @@ const GAME_TIMES: Record<string, string> = {
   'West-8-9':     '2026-03-20T22:05:00-04:00',
 };
 
+// Broadcast network for each matchup (parallel to GAME_TIMES)
+const GAME_NETWORKS: Record<string, string> = {
+  // Thursday, March 19
+  'East-6-11':    'CBS',
+  'South-3-14':   'TNT',
+  'South-5-12':   'TBS',
+  'West-4-13':    'truTV',
+  'East-3-14':    'CBS',
+  'South-6-11':   'TNT',
+  'South-4-13':   'TBS',
+  'West-5-12':    'truTV',
+  'Midwest-1-16': 'CBS',
+  'East-8-9':     'TNT',
+  'South-7-10':   'TBS',
+  'West-3-14':    'truTV',
+  'Midwest-8-9':  'TBS',
+  'East-1-16':    'CBS',
+  'South-2-15':   'TNT',
+  'West-6-11':    'truTV',
+  // Friday, March 20
+  'South-8-9':    'CBS',
+  'East-2-15':    'TNT',
+  'Midwest-7-10': 'TBS',
+  'East-4-13':    'truTV',
+  'South-1-16':   'CBS',
+  'East-7-10':    'TNT',
+  'Midwest-2-15': 'TBS',
+  'East-5-12':    'truTV',
+  'Midwest-4-13': 'CBS',
+  'Midwest-6-11': 'TNT',
+  'West-2-15':    'TBS',
+  'West-1-16':    'truTV',
+  'Midwest-5-12': 'TBS',
+  'Midwest-3-14': 'CBS',
+  'West-7-10':    'TNT',
+  'West-8-9':     'truTV',
+};
+
 // Standard matchup pairings for Round of 64: 1v16, 2v15, 3v14, 4v13, 5v12, 6v11, 7v10, 8v9
 const MATCHUP_PAIRS = [
   [1, 16],
@@ -93,7 +131,8 @@ export async function POST(request: NextRequest) {
           awaySeed: lowSeed,
           region,
           round: 'Round of 64',
-          gameDate: GAME_TIMES[gameTimeKey] ?? null,
+          gameTime: GAME_TIMES[gameTimeKey] ?? null,
+          network: GAME_NETWORKS[gameTimeKey] ?? null,
           winner: null,
           isComplete: false,
           createdAt: new Date().toISOString(),
