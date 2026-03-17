@@ -2,7 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase/clientApp';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
+
+function formatEasternDateLabel(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function getAdminDateKey(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+}
 
 export default function AdminGamesPage() {
   const [games, setGames] = useState<any[]>([]);
@@ -19,9 +34,15 @@ export default function AdminGamesPage() {
   const fetchGames = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'games'), orderBy('region', 'asc'));
-      const snap = await getDocs(q);
-      setGames(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const snap = await getDocs(collection(db, 'games'));
+      const allGames: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Sort chronologically: games with gameTime first (ascending), then games without
+      allGames.sort((a, b) => {
+        const aTime = a.gameTime ? new Date(a.gameTime).getTime() : Infinity;
+        const bTime = b.gameTime ? new Date(b.gameTime).getTime() : Infinity;
+        return aTime - bTime;
+      });
+      setGames(allGames);
     } catch {
       setGames([]);
     }
@@ -80,6 +101,110 @@ export default function AdminGamesPage() {
   const pendingGames = games.filter(g => !g.isComplete);
   const completedGames = games.filter(g => g.isComplete);
 
+  // Group games by calendar date for dividers
+  function groupByDate(gameList: any[]): Array<{ dateKey: string; label: string; games: any[] }> {
+    const groups: Record<string, { label: string; games: any[] }> = {};
+    const order: string[] = [];
+    for (const g of gameList) {
+      const key = g.gameTime ? getAdminDateKey(g.gameTime) : 'No Date';
+      const label = g.gameTime ? formatEasternDateLabel(g.gameTime) : 'No Date Set';
+      if (!groups[key]) {
+        groups[key] = { label, games: [] };
+        order.push(key);
+      }
+      groups[key].games.push(g);
+    }
+    return order.map(k => ({ dateKey: k, ...groups[k] }));
+  }
+
+  const pendingByDate = groupByDate(pendingGames);
+  const completedByDate = groupByDate(completedGames);
+
+  function renderGameCard(game: any, isPending: boolean) {
+    return (
+      <div
+        key={game.id}
+        className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center gap-4 ${
+          isPending
+            ? 'border-yellow-500/20'
+            : 'border-green-500/20'
+        }`}
+        style={{ backgroundColor: isPending ? 'rgba(255,255,0,0.03)' : 'rgba(0,255,0,0.03)' }}
+      >
+        <div className="flex-1">
+          <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">{game.region} — {game.round}</div>
+          <div className="font-bebas text-xl text-white">
+            #{game.homeSeed} {game.homeTeam} <span className="text-slate-500">vs</span> #{game.awaySeed} {game.awayTeam}
+          </div>
+          {isPending ? (
+            editingTime === game.id ? (
+              <div className="flex gap-2 items-center mt-2">
+                <input
+                  type="datetime-local"
+                  value={editTimeInputs[game.id] ?? isoToDatetimeLocal(game.gameTime ?? '')}
+                  onChange={(e) => setEditTimeInputs(prev => ({ ...prev, [game.id]: e.target.value }))}
+                  className="bg-slate-900 border border-slate-700 text-white text-xs px-2 py-1 rounded focus:outline-none focus:border-red-600"
+                />
+                <button
+                  onClick={async () => {
+                    const newTime = editTimeInputs[game.id];
+                    if (!newTime) return;
+                    await fetch('/api/admin/update-game-time', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ gameId: game.id, gameTime: new Date(newTime).toISOString() }),
+                    });
+                    setEditingTime(null);
+                    fetchGames();
+                  }}
+                  className="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white transition"
+                >Save</button>
+                <button onClick={() => setEditingTime(null)} className="text-xs text-slate-400 hover:text-white">Cancel</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingTime(game.id)}
+                className="text-xs text-slate-500 hover:text-slate-300 mt-1 underline"
+              >
+                {game.gameTime
+                  ? `⏱ ${new Date(game.gameTime).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ET`
+                  : 'Set time'}
+              </button>
+            )
+          ) : (
+            <div className="text-green-400 text-sm mt-1">✓ Winner: <strong>{game.winner}</strong></div>
+          )}
+        </div>
+        {isPending ? (
+          <div className="flex gap-2 items-center">
+            <select
+              value={winnerInputs[game.id] || ''}
+              onChange={(e) => setWinnerInputs(prev => ({ ...prev, [game.id]: e.target.value }))}
+              className="bg-slate-900 border border-slate-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-red-600"
+            >
+              <option value="">Select winner…</option>
+              <option value={game.homeTeam}>#{game.homeSeed} {game.homeTeam}</option>
+              <option value={game.awayTeam}>#{game.awaySeed} {game.awayTeam}</option>
+            </select>
+            <button
+              onClick={() => handleSetWinner(game.id)}
+              className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-all"
+            >
+              Set Winner
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => handleReopenGame(game.id)}
+            className="px-4 py-2 rounded border border-slate-600 text-slate-400 hover:bg-slate-800 text-sm transition-all"
+          >
+            Reopen Game
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ backgroundColor: '#0b1120', minHeight: '100vh', color: 'white' }} className="p-8">
       <div className="max-w-5xl mx-auto">
@@ -110,92 +235,36 @@ export default function AdminGamesPage() {
             {pendingGames.length > 0 && (
               <div className="mb-10">
                 <h2 className="font-bebas text-2xl text-yellow-400 mb-4 tracking-widest">Pending Games</h2>
-                <div className="space-y-3">
-                  {pendingGames.map(game => (
-                    <div key={game.id} className="p-4 rounded-xl border border-yellow-500/20 flex flex-col md:flex-row md:items-center gap-4" style={{ backgroundColor: 'rgba(255,255,0,0.03)' }}>
-                      <div className="flex-1">
-                        <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">{game.region} — {game.round}</div>
-                        <div className="font-bebas text-xl text-white">
-                          #{game.homeSeed} {game.homeTeam} <span className="text-slate-500">vs</span> #{game.awaySeed} {game.awayTeam}
-                        </div>
-                        {editingTime === game.id ? (
-                          <div className="flex gap-2 items-center mt-2">
-                            <input
-                              type="datetime-local"
-                              value={editTimeInputs[game.id] ?? isoToDatetimeLocal(game.gameTime ?? '')}
-                              onChange={(e) => setEditTimeInputs(prev => ({ ...prev, [game.id]: e.target.value }))}
-                              className="bg-slate-900 border border-slate-700 text-white text-xs px-2 py-1 rounded focus:outline-none focus:border-red-600"
-                            />
-                            <button
-                              onClick={async () => {
-                                const newTime = editTimeInputs[game.id];
-                                if (!newTime) return;
-                                await fetch('/api/admin/update-game-time', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ gameId: game.id, gameTime: new Date(newTime).toISOString() }),
-                                });
-                                setEditingTime(null);
-                                fetchGames();
-                              }}
-                              className="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white transition"
-                            >Save</button>
-                            <button onClick={() => setEditingTime(null)} className="text-xs text-slate-400 hover:text-white">Cancel</button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setEditingTime(game.id)}
-                            className="text-xs text-slate-500 hover:text-slate-300 mt-1 underline"
-                          >
-                            {game.gameTime ? `⏱ ${new Date(game.gameTime).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ET` : 'Set time'}
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <select
-                          value={winnerInputs[game.id] || ''}
-                          onChange={(e) => setWinnerInputs(prev => ({ ...prev, [game.id]: e.target.value }))}
-                          className="bg-slate-900 border border-slate-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-red-600"
-                        >
-                          <option value="">Select winner…</option>
-                          <option value={game.homeTeam}>#{game.homeSeed} {game.homeTeam}</option>
-                          <option value={game.awayTeam}>#{game.awaySeed} {game.awayTeam}</option>
-                        </select>
-                        <button
-                          onClick={() => handleSetWinner(game.id)}
-                          className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-all"
-                        >
-                          Set Winner
-                        </button>
-                      </div>
+                {pendingByDate.map(({ dateKey, label, games: dayGames }) => (
+                  <div key={dateKey} className="mb-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="flex-1 h-px bg-yellow-500/20" />
+                      <span className="text-xs text-yellow-500/70 uppercase tracking-widest font-sans font-semibold">{label}</span>
+                      <div className="flex-1 h-px bg-yellow-500/20" />
                     </div>
-                  ))}
-                </div>
+                    <div className="space-y-3">
+                      {dayGames.map(game => renderGameCard(game, true))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
             {completedGames.length > 0 && (
               <div>
                 <h2 className="font-bebas text-2xl text-green-400 mb-4 tracking-widest">Completed Games</h2>
-                <div className="space-y-3">
-                  {completedGames.map(game => (
-                    <div key={game.id} className="p-4 rounded-xl border border-green-500/20 flex flex-col md:flex-row md:items-center gap-4" style={{ backgroundColor: 'rgba(0,255,0,0.03)' }}>
-                      <div className="flex-1">
-                        <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">{game.region} — {game.round}</div>
-                        <div className="font-bebas text-xl text-white">
-                          #{game.homeSeed} {game.homeTeam} <span className="text-slate-500">vs</span> #{game.awaySeed} {game.awayTeam}
-                        </div>
-                        <div className="text-green-400 text-sm mt-1">✓ Winner: <strong>{game.winner}</strong></div>
-                      </div>
-                      <button
-                        onClick={() => handleReopenGame(game.id)}
-                        className="px-4 py-2 rounded border border-slate-600 text-slate-400 hover:bg-slate-800 text-sm transition-all"
-                      >
-                        Reopen Game
-                      </button>
+                {completedByDate.map(({ dateKey, label, games: dayGames }) => (
+                  <div key={dateKey} className="mb-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="flex-1 h-px bg-green-500/20" />
+                      <span className="text-xs text-green-500/70 uppercase tracking-widest font-sans font-semibold">{label}</span>
+                      <div className="flex-1 h-px bg-green-500/20" />
                     </div>
-                  ))}
-                </div>
+                    <div className="space-y-3">
+                      {dayGames.map(game => renderGameCard(game, false))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </>
