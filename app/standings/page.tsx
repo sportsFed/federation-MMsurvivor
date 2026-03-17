@@ -5,8 +5,7 @@ import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, query, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
-const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };
-
+const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };\n
 // March 19, 2026 12:15 PM ET (UTC-4 = 16:15 UTC)
 const FINAL_FOUR_DEADLINE = new Date('2026-03-19T16:15:00Z');
 
@@ -209,91 +208,6 @@ export default function StandingsPage() {
         </table>
       </div>
       )}
-
-      {/* Pick Analytics Section — outside the ternary, shown whenever we have entries */}
-      {entries.length > 0 && (() => {
-        // Build team pick counts from all entries
-        const teamStats: Record<string, { survivorCount: number; finalFourCount: number; champCount: number }> = {};
-
-        const ensureTeam = (team: string) => {
-          if (!teamStats[team]) teamStats[team] = { survivorCount: 0, finalFourCount: 0, champCount: 0 };
-        };
-
-        for (const entry of entries) {
-          const survivorPicks: any[] = entry.survivorPicks ?? [];
-          const activeSurvivorByGame: Record<string, string> = {};
-          for (const p of survivorPicks) {
-            if (p.result !== 'loss' && p.gameId && p.team) {
-              activeSurvivorByGame[p.gameId] = p.team;
-            }
-          }
-          for (const team of Object.values(activeSurvivorByGame)) {
-            ensureTeam(team);
-            teamStats[team].survivorCount++;
-          }
-
-          const ff = entry.finalFourPicks;
-          if (ff) {
-            for (const slot of ['f1', 'f2', 'f3', 'f4'] as const) {
-              const team = ff[slot];
-              if (team) { ensureTeam(team); teamStats[team].finalFourCount++; }
-            }
-            if (ff.champ) { ensureTeam(ff.champ); teamStats[ff.champ].champCount++; }
-          }
-        }
-
-        const analyticsRows = Object.entries(teamStats)
-          .map(([team, counts]) => ({ team, ...counts, total: counts.survivorCount + counts.finalFourCount + counts.champCount }))
-          .filter(r => r.total > 0)
-          .sort((a, b) => b.total - a.total);
-
-        if (analyticsRows.length === 0) return null;
-        const deadlinePassed = isDeadlinePassed(now);
-
-        return (
-          <div className="mt-8">
-            <h2 className="font-sans font-bold text-lg text-white mb-3 tracking-wide">Team Pick Counts</h2>
-            <div className="glass-panel overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-900/50 border-b border-slate-700">
-                    <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase">Team</th>
-                    <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Survivor Picks</th>
-                    {deadlinePassed && (
-                      <>
-                        <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Final Four</th>
-                        <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Champion</th>
-                      </>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {analyticsRows
-                    .filter(r => deadlinePassed ? true : r.survivorCount > 0)
-                    .map(row => (
-                      <tr key={row.team} className="border-b border-slate-800 hover:bg-slate-800/30">
-                        <td className="py-1.5 px-2 font-sans text-sm text-white font-medium">{row.team}</td>
-                        <td className="py-1.5 px-2 text-center font-sans text-sm text-slate-300">
-                          {row.survivorCount > 0 ? row.survivorCount : <span className="text-slate-600">—</span>}
-                        </td>
-                        {deadlinePassed && (
-                          <>
-                            <td className="py-1.5 px-2 text-center font-sans text-sm text-slate-300">
-                              {row.finalFourCount > 0 ? row.finalFourCount : <span className="text-slate-600">—</span>}
-                            </td>
-                            <td className="py-1.5 px-2 text-center font-sans text-sm text-red-400 font-semibold">
-                              {row.champCount > 0 ? row.champCount : <span className="text-slate-600 font-normal">—</span>}
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }
