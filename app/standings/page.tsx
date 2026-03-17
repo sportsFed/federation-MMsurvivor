@@ -94,7 +94,7 @@ export default function StandingsPage() {
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="font-bebas text-5xl text-white tracking-widest italic mb-8 uppercase">Federation Leaderboard</h1>
+      <h1 className="font-sans font-bold text-3xl text-white mb-8 uppercase tracking-wide">Federation Leaderboard</h1>
       {snapshotError ? (
         <div className="glass-panel p-10 text-center border border-white/10">
           <p className="text-slate-400 text-sm">Unable to load standings at this time. Please try again later.</p>
@@ -106,16 +106,16 @@ export default function StandingsPage() {
         </div>
       ) : (
       <div className="glass-panel overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[700px]">
+        <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-900/50 border-b border-slate-700">
-              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase w-10">#</th>
-              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase">Entrant</th>
-              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-right">Score</th>
-              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Status</th>
-              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">Today&apos;s Pick</th>
-              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">Final Four</th>
-              <th className="p-3 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">🏆 Champion</th>
+              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase w-10">#</th>
+              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase">Entrant</th>
+              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-right">Score</th>
+              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Status</th>
+              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">Today&apos;s Pick</th>
+              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">Final Four</th>
+              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">🏆 Champion</th>
             </tr>
           </thead>
           <tbody>
@@ -151,29 +151,29 @@ export default function StandingsPage() {
                       : 'hover:bg-slate-800/30'
                   }`}
                 >
-                  <td className="p-3 font-sans text-slate-400 text-sm">
+                  <td className="py-1.5 px-2 font-sans text-slate-400 text-sm">
                     <span className={isPaidPosition ? 'text-amber-400 font-bold' : ''}>
                       {RANK_EMOJI[rank] ?? rank}
                     </span>
                     {isPaidPosition && rank > 3 && <span className="ml-1 text-[10px] text-amber-600" aria-label="Paid position">💰</span>}
                   </td>
-                  <td className="p-3 font-sans font-semibold text-sm text-white">
+                  <td className="py-1.5 px-2 font-sans font-semibold text-sm text-white">
                     {entry.displayName || 'Anonymous Entrant'}
                     {isCurrentUser && (
                       <span className="ml-2 text-xs text-fedRed font-sans uppercase tracking-widest">You</span>
                     )}
                   </td>
-                  <td className="p-3 text-right font-mono text-sm font-bold text-fedRed">
+                  <td className="py-1.5 px-2 text-right font-mono text-sm font-bold text-fedRed">
                     {(entry.totalPoints ?? 0).toFixed(1)}
                   </td>
-                  <td className="p-3 text-center">
+                  <td className="py-1.5 px-2 text-center">
                     {entry.isEliminated ? (
                       <span className="text-red-400 bg-red-900/30 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border border-red-500/30">Out</span>
                     ) : (
                       <span className="text-green-400 bg-green-900/30 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border border-green-500/30">Active</span>
                     )}
                   </td>
-                  <td className="p-3 text-center font-sans text-sm text-slate-300 whitespace-nowrap">
+                  <td className="py-1.5 px-2 text-center font-sans text-sm text-slate-300 whitespace-nowrap">
                     {entry.currentPick ? (
                       survivorPickLocked
                         ? entry.currentPick
@@ -182,21 +182,20 @@ export default function StandingsPage() {
                       <span className="text-slate-600">—</span>
                     )}
                   </td>
-                  <td className="p-3 text-center font-sans text-xs text-slate-400 whitespace-nowrap">
+                  <td className="py-1.5 px-2 text-center font-sans text-xs text-slate-400 whitespace-nowrap">
                     {showFinalFourPicks ? (
                       entry.finalFourPicks ? (
-                        <div className="space-y-0.5">
+                        <span className="text-slate-300">
                           {[entry.finalFourPicks.f1, entry.finalFourPicks.f2, entry.finalFourPicks.f3, entry.finalFourPicks.f4]
                             .filter(Boolean)
-                            .map((t: string, i: number) => <div key={i} className="text-slate-300">{t}</div>)}
-                          {!entry.finalFourPicks.f1 && <span className="text-slate-600">—</span>}
-                        </div>
+                            .join(', ') || <span className="text-slate-600">—</span>}
+                        </span>
                       ) : <span className="text-slate-600">—</span>
                     ) : (
                       <span className="text-slate-500 italic text-xs">Locked</span>
                     )}
                   </td>
-                  <td className="p-3 text-center font-sans text-sm font-semibold text-red-400 whitespace-nowrap">
+                  <td className="py-1.5 px-2 text-center font-sans text-sm font-semibold text-red-400 whitespace-nowrap">
                     {showFinalFourPicks ? (
                       entry.finalFourPicks?.champ ?? <span className="text-slate-600">—</span>
                     ) : (
@@ -210,6 +209,91 @@ export default function StandingsPage() {
         </table>
       </div>
       )}
+
+      {/* Pick Analytics Section — outside the ternary, shown whenever we have entries */}
+      {entries.length > 0 && (() => {
+        // Build team pick counts from all entries
+        const teamStats: Record<string, { survivorCount: number; finalFourCount: number; champCount: number }> = {};
+
+        const ensureTeam = (team: string) => {
+          if (!teamStats[team]) teamStats[team] = { survivorCount: 0, finalFourCount: 0, champCount: 0 };
+        };
+
+        for (const entry of entries) {
+          const survivorPicks: any[] = entry.survivorPicks ?? [];
+          const activeSurvivorByGame: Record<string, string> = {};
+          for (const p of survivorPicks) {
+            if (p.result !== 'loss' && p.gameId && p.team) {
+              activeSurvivorByGame[p.gameId] = p.team;
+            }
+          }
+          for (const team of Object.values(activeSurvivorByGame)) {
+            ensureTeam(team);
+            teamStats[team].survivorCount++;
+          }
+
+          const ff = entry.finalFourPicks;
+          if (ff) {
+            for (const slot of ['f1', 'f2', 'f3', 'f4'] as const) {
+              const team = ff[slot];
+              if (team) { ensureTeam(team); teamStats[team].finalFourCount++; }
+            }
+            if (ff.champ) { ensureTeam(ff.champ); teamStats[ff.champ].champCount++; }
+          }
+        }
+
+        const analyticsRows = Object.entries(teamStats)
+          .map(([team, counts]) => ({ team, ...counts, total: counts.survivorCount + counts.finalFourCount + counts.champCount }))
+          .filter(r => r.total > 0)
+          .sort((a, b) => b.total - a.total);
+
+        if (analyticsRows.length === 0) return null;
+        const deadlinePassed = isDeadlinePassed(now);
+
+        return (
+          <div className="mt-8">
+            <h2 className="font-sans font-bold text-lg text-white mb-3 tracking-wide">Team Pick Counts</h2>
+            <div className="glass-panel overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-900/50 border-b border-slate-700">
+                    <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase">Team</th>
+                    <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Survivor Picks</th>
+                    {deadlinePassed && (
+                      <>
+                        <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Final Four</th>
+                        <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Champion</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {analyticsRows
+                    .filter(r => deadlinePassed ? true : r.survivorCount > 0)
+                    .map(row => (
+                      <tr key={row.team} className="border-b border-slate-800 hover:bg-slate-800/30">
+                        <td className="py-1.5 px-2 font-sans text-sm text-white font-medium">{row.team}</td>
+                        <td className="py-1.5 px-2 text-center font-sans text-sm text-slate-300">
+                          {row.survivorCount > 0 ? row.survivorCount : <span className="text-slate-600">—</span>}
+                        </td>
+                        {deadlinePassed && (
+                          <>
+                            <td className="py-1.5 px-2 text-center font-sans text-sm text-slate-300">
+                              {row.finalFourCount > 0 ? row.finalFourCount : <span className="text-slate-600">—</span>}
+                            </td>
+                            <td className="py-1.5 px-2 text-center font-sans text-sm text-red-400 font-semibold">
+                              {row.champCount > 0 ? row.champCount : <span className="text-slate-600 font-normal">—</span>}
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

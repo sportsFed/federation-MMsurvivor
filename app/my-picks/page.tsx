@@ -25,13 +25,19 @@ function getEasternGameDate(isoString: string): string {
   });
 }
 
+function formatEasternTabLabel(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 function getEasternDateKey(isoString: string): string {
   const d = new Date(isoString);
   return d.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
-}
-
-function getDaySectionId(dateKey: string): string {
-  return `day-${dateKey.replace(/\//g, '-')}`;
 }
 
 const ELITE_EIGHT_REQUIRED_PICKS = 2;
@@ -53,12 +59,14 @@ function formatCountdown(isoString: string, now: Date): string | null {
 export default function MyPicksPage() {
   const router = useRouter();
   const [games, setGames] = useState<any[]>([]);
+  const [allEntries, setAllEntries] = useState<any[]>([]);
   const [userEntry, setUserEntry] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pickMessage, setPickMessage] = useState('');
   const [now, setNow] = useState(() => new Date());
   const [confirmPick, setConfirmPick] = useState<{ team: string; seed: number; game: any } | null>(null);
+  const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
 
   const showMessage = (msg: string, ms = 5000) => {
     setPickMessage(msg);
@@ -75,12 +83,14 @@ export default function MyPicksPage() {
       if (user) {
         setUserId(user.uid);
         try {
-          const entryRef = doc(db, 'entries', user.uid);
-          const entrySnap = await getDoc(entryRef);
+          const [entrySnap, gamesSnap, entriesSnap] = await Promise.all([
+            getDoc(doc(db, 'entries', user.uid)),
+            getDocs(collection(db, 'games')),
+            getDocs(collection(db, 'entries')),
+          ]);
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
-
-          const gamesSnap = await getDocs(collection(db, 'games'));
           setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setAllEntries(entriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         } catch (err: any) {
           showMessage(`Error loading data: ${err.message}`);
         }
@@ -91,6 +101,20 @@ export default function MyPicksPage() {
     });
     return () => unsubscribe();
   }, [router]);
+
+  // Build pick distribution map: gameId -> { home: count, away: count }
+  const pickDistribution = new Map<string, { home: number; away: number }>();
+  for (const entry of allEntries) {
+    for (const pick of entry.survivorPicks ?? []) {
+      if (!pick.gameId || !pick.team) continue;
+      const game = games.find((g: any) => g.id === pick.gameId);
+      if (!game) continue;
+      const current = pickDistribution.get(pick.gameId) ?? { home: 0, away: 0 };
+      if (pick.team === game.homeTeam) current.home++;
+      else if (pick.team === game.awayTeam) current.away++;
+      pickDistribution.set(pick.gameId, current);
+    }
+  }
 
   // Only count teams from rounds that have already been scored as "used"
   const alreadyPickedTeams: string[] = (userEntry?.survivorPicks ?? [])
@@ -252,24 +276,52 @@ export default function MyPicksPage() {
     (p: any) => p.round === 'Elite Eight'
   );
 
-  // Per-day missing pick alerts for upcoming unlocked days (non-Elite Eight)
-  const missingPickDayAlerts: Array<{ dateKey: string; dayLabel: string; anchor: string }> = [];
-  Object.entries(gamesByDay).forEach(([dateKey, dayGames]) => {
-    const isEliteEightDay = (dayGames as any[]).some((g: any) => g.round === 'Elite Eight');
-    if (isEliteEightDay) return; // handled separately
-    const hasUnlockedGames = (dayGames as any[]).some((g: any) => {
+  // Build day tabs
+  interface DayTab {
+    dateKey: string;
+    label: string;
+    isEliteEight: boolean;
+    hasUnlockedGames: boolean;
+    pickStatus: 'has-pick' | 'missing-pick' | 'complete'; // complete = all games done
+  }
+
+  const dayTabs: DayTab[] = Object.entries(gamesByDay).map(([dateKey, dayGames]) => {
+    const typedDayGames = dayGames as any[];
+    const isEliteEight = typedDayGames.some((g: any) => g.round === 'Elite Eight');
+    const firstGame = typedDayGames[0];
+    const gameTimeStr = firstGame.gameTime ?? firstGame.tipoff ?? '';
+    const label = isEliteEight ? 'Elite 8' : (gameTimeStr ? formatEasternTabLabel(gameTimeStr) : dateKey);
+    const hasUnlockedGames = typedDayGames.some((g: any) => {
       const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt;
       return gt && now < new Date(gt);
     });
-    if (!hasUnlockedGames) return;
-    const hasPick = pendingPicks.some((p: any) => getEffectivePickDateKey(p) === dateKey);
-    if (!hasPick) {
-      const firstGame = (dayGames as any[])[0];
-      const gameTimeStr = firstGame.gameTime ?? firstGame.tipoff ?? '';
-      const dayLabel = gameTimeStr ? getEasternGameDate(gameTimeStr) : dateKey;
-      missingPickDayAlerts.push({ dateKey, dayLabel, anchor: getDaySectionId(dateKey) });
+    const allComplete = typedDayGames.every((g: any) => g.isComplete);
+
+    let pickStatus: DayTab['pickStatus'] = 'complete';
+    if (!allComplete) {
+      if (isEliteEight) {
+        pickStatus = eliteEightPicks.length >= ELITE_EIGHT_REQUIRED_PICKS ? 'has-pick' : 'missing-pick';
+      } else {
+        const hasPick = pendingPicks.some((p: any) => getEffectivePickDateKey(p) === dateKey);
+        pickStatus = hasPick ? 'has-pick' : 'missing-pick';
+      }
     }
+
+    return { dateKey, label, isEliteEight, hasUnlockedGames, pickStatus };
   });
+
+  // Initialize active tab: first day with unlocked games, else first day
+  const initialTabKey = (() => {
+    const firstUnlocked = dayTabs.find(t => t.hasUnlockedGames);
+    return firstUnlocked?.dateKey ?? dayTabs[0]?.dateKey ?? null;
+  })();
+
+  const effectiveActiveTab = activeTabKey ?? initialTabKey;
+
+  // Per-day missing pick alerts for upcoming unlocked days (non-Elite Eight)
+  const missingPickDayAlerts = dayTabs.filter(
+    t => !t.isEliteEight && t.hasUnlockedGames && t.pickStatus === 'missing-pick'
+  );
 
   // Elite Eight alert: need 2 total picks across Sat/Sun window
   const upcomingEliteEightGames = sortedGames.filter((g: any) => {
@@ -328,25 +380,36 @@ export default function MyPicksPage() {
         </div>
       )}
 
-      {/* Missing pick alerts for upcoming days */}
-      {missingPickDayAlerts.map(({ dateKey, dayLabel, anchor }) => (
+      {/* Missing pick alerts for upcoming days — clicking switches to that tab */}
+      {missingPickDayAlerts.map(({ dateKey, label }) => (
         <div key={dateKey} className="mb-4 p-3 rounded-lg bg-blue-900/20 border border-blue-600/40 text-blue-300 text-sm font-sans flex items-center justify-between">
-          <span>🗓️ No pick yet for <strong>{dayLabel}</strong></span>
-          <a href={`#${anchor}`} className="text-blue-400 underline hover:text-blue-300 text-xs font-semibold">
+          <span>🗓️ No pick yet for <strong>{label}</strong></span>
+          <button
+            onClick={() => setActiveTabKey(dateKey)}
+            className="text-blue-400 underline hover:text-blue-300 text-xs font-semibold bg-transparent border-0 cursor-pointer"
+          >
             See Games →
-          </a>
+          </button>
         </div>
       ))}
 
       {/* Elite Eight alert: need 2 total picks */}
-      {showEliteEightAlert && (
-        <div className="mb-4 p-3 rounded-lg bg-purple-900/20 border border-purple-600/40 text-purple-300 text-sm font-sans flex items-center justify-between">
-          <span>🏀 Elite Eight requires {ELITE_EIGHT_REQUIRED_PICKS} picks — {eliteEightPicks.length} of {ELITE_EIGHT_REQUIRED_PICKS} submitted</span>
-          <a href="#elite-eight-games" className="text-purple-400 underline hover:text-purple-300 text-xs font-semibold">
-            See Elite Eight →
-          </a>
-        </div>
-      )}
+      {showEliteEightAlert && (() => {
+        const eeTab = dayTabs.find(t => t.isEliteEight);
+        return (
+          <div className="mb-4 p-3 rounded-lg bg-purple-900/20 border border-purple-600/40 text-purple-300 text-sm font-sans flex items-center justify-between">
+            <span>🏀 Elite Eight requires {ELITE_EIGHT_REQUIRED_PICKS} picks — {eliteEightPicks.length} of {ELITE_EIGHT_REQUIRED_PICKS} submitted</span>
+            {eeTab && (
+              <button
+                onClick={() => setActiveTabKey(eeTab.dateKey)}
+                className="text-purple-400 underline hover:text-purple-300 text-xs font-semibold bg-transparent border-0 cursor-pointer"
+              >
+                See Elite Eight →
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Current Pick Status — one banner per pending pick */}
       {pendingPicks.length > 0 && (
@@ -391,99 +454,208 @@ export default function MyPicksPage() {
           <p className="text-slate-500 text-xs uppercase tracking-widest font-sans font-bold">Check back after Selection Sunday!</p>
         </div>
       ) : (
-        Object.entries(gamesByDay).map(([dateKey, dayGames]) => {
-          const gameTimeStr = dayGames[0].gameTime ?? dayGames[0].tipoff ?? '';
-          const dayLabel = gameTimeStr ? getEasternGameDate(gameTimeStr) : dateKey;
-          const isEliteEightDay = (dayGames as any[]).some((g: any) => g.round === 'Elite Eight');
-          const sectionId = isEliteEightDay ? 'elite-eight-games' : getDaySectionId(dateKey);
-          return (
-            <div id={sectionId} key={dateKey}>
-              <div className="flex items-center gap-3 my-4">
-                <div className="flex-1 h-px bg-slate-700" />
-                <span className="text-xs text-slate-400 uppercase tracking-widest font-sans font-semibold">{dayLabel}</span>
-                <div className="flex-1 h-px bg-slate-700" />
+        <>
+          {/* Sticky Day Tab Bar */}
+          {dayTabs.length > 0 && (
+            <div className="sticky top-0 z-10 bg-[#0b1120]/95 backdrop-blur-sm border-b border-slate-800 mb-4 -mx-4 px-4 pb-2 pt-1">
+              <div className="flex gap-1 overflow-x-auto scrollbar-none">
+                {dayTabs.map((tab) => {
+                  const isActive = tab.dateKey === effectiveActiveTab;
+                  const allComplete = tab.pickStatus === 'complete';
+                  return (
+                    <button
+                      key={tab.dateKey}
+                      onClick={() => setActiveTabKey(tab.dateKey)}
+                      className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-sans font-semibold transition-all whitespace-nowrap ${
+                        isActive
+                          ? 'bg-fedRed text-white'
+                          : allComplete
+                          ? 'bg-slate-800/40 text-slate-600 hover:text-slate-400'
+                          : 'bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-700/60'
+                      }`}
+                    >
+                      {tab.label}
+                      {/* Status dot */}
+                      {!allComplete && (
+                        <span
+                          className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#0b1120] ${
+                            tab.pickStatus === 'has-pick' ? 'bg-green-400' : 'bg-amber-400'
+                          }`}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-              {dayGames.map((game) => {
-                const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
-                const isLocked = gameTime ? now >= new Date(gameTime) : game.isComplete;
-                const easternTime = gameTime ? formatEasternTime(gameTime) : null;
-                const countdown = (!isLocked && gameTime) ? formatCountdown(gameTime, now) : null;
-                const gamePickEntry = (userEntry?.survivorPicks ?? []).find((p: any) => p.gameId === game.id);
-                const thisGamePickTeam = gamePickEntry?.team;
-
-                return (
-                  <div
-                    key={game.id}
-                    className={`bg-slate-800/40 border rounded-xl p-3 mb-2 transition-all ${
-                      isLocked ? 'border-slate-700/50 opacity-70' : 'border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
-                        {game.region} · {game.round || 'Round of 64'}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {game.network && (
-                          <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-sans">{game.network}</span>
-                        )}
-                        {easternTime && (
-                          <span className="text-[11px] text-slate-400 font-sans">{easternTime} ET</span>
-                        )}
-                        {isLocked ? (
-                          game.isComplete && game.winner ? null : <span className="text-[11px] text-slate-500">🔒</span>
-                        ) : countdown ? (
-                          <span className="text-[11px] text-amber-400 font-mono font-semibold">⏱ {countdown}</span>
-                        ) : null}
-                      </div>
-                    </div>
-                    {game.round === 'Elite Eight' && (
-                      <div className="mb-2 text-[10px] text-purple-400 font-sans">
-                        Elite Eight — pick {ELITE_EIGHT_REQUIRED_PICKS} teams this weekend · {eliteEightPicks.length} of {ELITE_EIGHT_REQUIRED_PICKS} submitted
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { team: game.homeTeam, seed: game.homeSeed },
-                        { team: game.awayTeam, seed: game.awaySeed },
-                      ].map(({ team, seed }) => {
-                        const isThisRoundPick = thisGamePickTeam === team;
-                        const isUsedInPrevRound = alreadyPickedTeams.includes(team);
-                        const canPick = !isLocked && !game.isComplete && !isUsedInPrevRound;
-                        return (
-                          <button
-                            key={team}
-                            onClick={() => canPick && setConfirmPick({ team, seed, game })}
-                            disabled={!canPick}
-                            className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left ${
-                              isThisRoundPick
-                                ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-pointer hover:bg-green-700/60'
-                                : isUsedInPrevRound
-                                ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
-                                : isLocked || game.isComplete
-                                ? 'bg-slate-800/60 border border-slate-700/40 text-slate-500 cursor-default'
-                                : 'bg-slate-700/60 hover:bg-red-700/50 hover:border-red-500/50 border border-slate-600 text-white cursor-pointer'
-                            }`}
-                          >
-                            <span className="text-[10px] text-slate-500 block mb-0.5">#{seed}</span>
-                            <span className="block leading-tight text-xs">{team}</span>
-                            {isThisRoundPick && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
-                            {isUsedInPrevRound && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
-                            {isLocked && !isThisRoundPick && !isUsedInPrevRound && (
-                              <span className="text-[10px] text-slate-600 mt-0.5 block">Locked</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {game.isComplete && game.winner && (
-                      <p className="text-xs text-green-400 mt-2 font-sans">✓ Final: {game.winner} won</p>
-                    )}
-                  </div>
-                );
-              })}
             </div>
-          );
-        })
+          )}
+
+          {/* Active Tab Games */}
+          {effectiveActiveTab && gamesByDay[effectiveActiveTab] && (() => {
+            const tabGames = gamesByDay[effectiveActiveTab] as any[];
+            const isEliteEightDay = tabGames.some((g: any) => g.round === 'Elite Eight');
+
+            // Sort: incomplete/upcoming first, completed at bottom
+            const sortedTabGames = [...tabGames].sort((a, b) => {
+              if (a.isComplete && !b.isComplete) return 1;
+              if (!a.isComplete && b.isComplete) return -1;
+              const aTime = new Date(a.gameTime ?? a.tipoff ?? 0).getTime();
+              const bTime = new Date(b.gameTime ?? b.tipoff ?? 0).getTime();
+              return aTime - bTime;
+            });
+
+            return (
+              <div>
+                {sortedTabGames.map((game: any) => {
+                  const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
+                  const isLocked = gameTime ? now >= new Date(gameTime) : game.isComplete;
+                  const easternTime = gameTime ? formatEasternTime(gameTime) : null;
+                  const countdown = (!isLocked && gameTime) ? formatCountdown(gameTime, now) : null;
+                  const gamePickEntry = (userEntry?.survivorPicks ?? []).find((p: any) => p.gameId === game.id);
+                  const thisGamePickTeam = gamePickEntry?.team;
+                  const dist = pickDistribution.get(game.id);
+                  const distTotal = dist ? dist.home + dist.away : 0;
+
+                  // Compact collapsed card for completed games
+                  if (game.isComplete && game.winner) {
+                    const userPickedWinner = thisGamePickTeam === game.winner;
+                    const userPickedLoser = thisGamePickTeam && thisGamePickTeam !== game.winner;
+                    const winnerSeed = game.winner === game.homeTeam ? game.homeSeed : game.awaySeed;
+                    const loserTeam = game.winner === game.homeTeam ? game.awayTeam : game.homeTeam;
+                    const loserSeed = game.winner === game.homeTeam ? game.awaySeed : game.homeSeed;
+
+                    return (
+                      <div
+                        key={game.id}
+                        className="bg-slate-800/20 border border-slate-700/40 rounded-lg px-3 py-2 mb-1.5 opacity-75"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[10px] text-slate-600 uppercase tracking-widest font-sans shrink-0">
+                              {game.region} · {game.round || 'R64'}
+                            </span>
+                          </div>
+                          {easternTime && (
+                            <span className="text-[10px] text-slate-600 font-sans shrink-0">{easternTime} ET</span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between mt-1 gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-green-400 text-[11px]">✓</span>
+                            <span className="text-xs font-sans font-semibold text-slate-200">
+                              #{winnerSeed} {game.winner}
+                            </span>
+                            <span className="text-[10px] text-slate-600 font-sans line-through">
+                              #{loserSeed} {loserTeam}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {thisGamePickTeam && (
+                              <span className={`text-[10px] font-sans font-medium ${userPickedWinner ? 'text-green-400' : 'text-red-400'}`}>
+                                {userPickedWinner ? '✅' : '❌'} {thisGamePickTeam}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {dist && distTotal > 0 && (
+                          <div className="mt-1 text-[10px] text-slate-500 font-sans">
+                            {game.homeTeam}: {dist.home} pick{dist.home !== 1 ? 's' : ''} · {game.awayTeam}: {dist.away} pick{dist.away !== 1 ? 's' : ''}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Standard card for active/upcoming games
+                  return (
+                    <div
+                      key={game.id}
+                      className={`bg-slate-800/40 border rounded-xl p-3 mb-2 transition-all ${
+                        isLocked ? 'border-slate-700/50 opacity-70' : 'border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
+                          {game.region} · {game.round || 'Round of 64'}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {game.network && (
+                            <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-sans">{game.network}</span>
+                          )}
+                          {easternTime && (
+                            <span className="text-[11px] text-slate-400 font-sans">{easternTime} ET</span>
+                          )}
+                          {isLocked ? (
+                            game.isComplete && game.winner ? null : <span className="text-[11px] text-slate-500">🔒</span>
+                          ) : countdown ? (
+                            <span className="text-[11px] text-amber-400 font-mono font-semibold">⏱ {countdown}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                      {isEliteEightDay && (
+                        <div className="mb-2 text-[10px] text-purple-400 font-sans">
+                          Elite Eight — pick {ELITE_EIGHT_REQUIRED_PICKS} teams this weekend · {eliteEightPicks.length} of {ELITE_EIGHT_REQUIRED_PICKS} submitted
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { team: game.homeTeam, seed: game.homeSeed },
+                          { team: game.awayTeam, seed: game.awaySeed },
+                        ].map(({ team, seed }) => {
+                          const isThisRoundPick = thisGamePickTeam === team;
+                          const isUsedInPrevRound = alreadyPickedTeams.includes(team);
+                          const canPick = !isLocked && !game.isComplete && !isUsedInPrevRound;
+                          return (
+                            <button
+                              key={team}
+                              onClick={() => canPick && setConfirmPick({ team, seed, game })}
+                              disabled={!canPick}
+                              className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left ${
+                                isThisRoundPick
+                                  ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-pointer hover:bg-green-700/60'
+                                  : isUsedInPrevRound
+                                  ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
+                                  : isLocked || game.isComplete
+                                  ? 'bg-slate-800/60 border border-slate-700/40 text-slate-500 cursor-default'
+                                  : 'bg-slate-700/60 hover:bg-red-700/50 hover:border-red-500/50 border border-slate-600 text-white cursor-pointer'
+                              }`}
+                            >
+                              <span className="text-[10px] text-slate-500 block mb-0.5">#{seed}</span>
+                              <span className="block leading-tight text-xs">{team}</span>
+                              {isThisRoundPick && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
+                              {isUsedInPrevRound && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
+                              {isLocked && !isThisRoundPick && !isUsedInPrevRound && (
+                                <span className="text-[10px] text-slate-600 mt-0.5 block">Locked</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {/* Pick distribution — shown once game is locked */}
+                      {isLocked && dist && distTotal > 0 && (
+                        <div className="mt-2 pt-2 border-t border-slate-700/50">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div
+                              className="h-1.5 rounded-full bg-blue-400"
+                              style={{ width: `${distTotal > 0 ? (dist.home / distTotal) * 100 : 50}%` }}
+                            />
+                            <div
+                              className="h-1.5 rounded-full bg-purple-400"
+                              style={{ width: `${distTotal > 0 ? (dist.away / distTotal) * 100 : 50}%` }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-sans">
+                            {dist.home} for {game.homeTeam} · {dist.away} for {game.awayTeam}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </>
       )}
 
       {/* Summary Section */}
@@ -584,3 +756,4 @@ export default function MyPicksPage() {
     </div>
   );
 }
+
