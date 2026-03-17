@@ -5,7 +5,8 @@ import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, query, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
-const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };\n
+const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };
+
 // March 19, 2026 12:15 PM ET (UTC-4 = 16:15 UTC)
 const FINAL_FOUR_DEADLINE = new Date('2026-03-19T16:15:00Z');
 
