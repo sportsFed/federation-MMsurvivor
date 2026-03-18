@@ -236,6 +236,23 @@ function findTeamByName(
   return undefined;
 }
 
+// ─── Day derivation helper ────────────────────────────────────────────────────
+
+/**
+ * Derive the tournament game day from an actual Firestore gameTime ISO string.
+ * Returns the Eastern Time day-of-week as a GameDay value.
+ */
+export function deriveDayFromGameTime(gameTimeISO: string | null): GameDay {
+  if (!gameTimeISO) return 'tbd';
+  const d = new Date(gameTimeISO);
+  const dayName = d.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' }).toLowerCase();
+  if (dayName === 'thursday') return 'thursday';
+  if (dayName === 'friday') return 'friday';
+  if (dayName === 'saturday') return 'saturday';
+  if (dayName === 'sunday') return 'sunday';
+  return 'tbd';
+}
+
 // ─── Projection model builder ─────────────────────────────────────────────────
 
 /**

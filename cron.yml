@@ -12,3 +12,7 @@ jobs:
         run: |
           curl -X GET "https://federation-survivor.vercel.app/api/cron/update-games" \
           -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+      - name: Auto-eliminate missed picks
+        run: |
+          curl -X GET "https://federation-survivor.vercel.app/api/cron/auto-eliminate" \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

@@ -4,8 +4,8 @@ import { db } from '@/lib/firebase/adminApp';
 import { validateAdminSession } from '@/lib/adminAuth';
 import {
   listFrameworkGamesByRound,
-  getFrameworkGame,
   mapFirestoreGameToBracketKey,
+  deriveDayFromGameTime,
 } from '@/lib/bracket/framework';
 import type { GameDay } from '@/lib/bracket/framework';
 
@@ -75,11 +75,8 @@ export async function POST(request: NextRequest) {
           // the first upstream game's time is sufficient — admins can fine-tune via "Set time".
           gameTime = shiftByTwoDays(upstreamR64Time);
         }
-        // Derive the R32 day from the upstream R64 framework game's day
-        const upstreamFrameworkGame = getFrameworkGame(upstreamId);
-        if (upstreamFrameworkGame) {
-          day = r32DayFromR64Day(upstreamFrameworkGame.day);
-        }
+        // Derive the R32 day from the actual gameTime of the upstream R64 game
+        day = r32DayFromR64Day(deriveDayFromGameTime(upstreamR64Time));
       }
 
       await docRef.set({
