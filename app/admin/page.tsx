@@ -12,6 +12,7 @@ export default function AdminDashboard() {
   const [loadingStats, setLoadingStats] = useState(true);
   const [importStatus, setImportStatus] = useState('');
   const [seedStatus, setSeedStatus] = useState('');
+  const [exportStatus, setExportStatus] = useState('');
 
   // Change password state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -81,6 +82,52 @@ export default function AdminDashboard() {
       setSeedStatus('❌ Network error seeding bracket.');
     }
   };
+
+  const handleExportTeams = async () => {
+  setExportStatus('Exporting teams...');
+  try {
+    const snap = await getDocs(collection(db, 'teams'));
+    const teams = snap.docs.map((d) => d.data());
+
+    // Sort for readability/continuity
+    const regionOrder: Record<string, number> = { East: 1, West: 2, South: 3, Midwest: 4 };
+
+    teams.sort((a: any, b: any) => {
+      const ra = regionOrder[a.region] ?? 99;
+      const rb = regionOrder[b.region] ?? 99;
+      if (ra !== rb) return ra - rb;
+      return (a.seed ?? 99) - (b.seed ?? 99);
+    });
+
+    // Export ONLY the canonical fields your app expects
+    const payload = {
+      teams: teams.map((t: any) => ({
+        name: t.name ?? '',
+        seed: t.seed ?? null,
+        regionalSeed: t.regionalSeed ?? t.seed ?? null,
+        region: t.region ?? '',
+        nationalSeed: t.nationalSeed ?? null,
+        isEliminated: Boolean(t.isEliminated),
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'teams-export-2026.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+
+    setExportStatus(`✅ Exported ${payload.teams.length} teams.`);
+  } catch {
+    setExportStatus('❌ Error exporting teams.');
+  }
+};
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,7 +233,7 @@ export default function AdminDashboard() {
                 className="w-full py-3 px-6 rounded-xl font-bebas text-xl text-white transition-all uppercase tracking-widest"
                 style={{ backgroundColor: '#dc2626' }}
               >
-                �� Import All 68 Teams
+                📥 Import All 68 Teams
               </button>
               {importStatus && <p className="mt-2 text-sm text-slate-300">{importStatus}</p>}
               <p className="text-slate-600 text-xs mt-1">Bulk-loads all 68 teams from the built-in Selection Sunday list</p>
@@ -204,6 +251,18 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+
+        <div className="flex-1">
+  <button
+    onClick={handleExportTeams}
+    className="w-full py-3 px-6 rounded-xl font-bebas text-xl text-white transition-all uppercase tracking-widest border border-white/20 hover:border-white/40"
+    style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+  >
+    ⬇️ Export Teams JSON
+  </button>
+  {exportStatus && <p className="mt-2 text-sm text-slate-300">{exportStatus}</p>}
+  <p className="text-slate-600 text-xs mt-1">Downloads a JSON snapshot of the current teams collection</p>
+</div>
 
         {/* Change Password */}
         <div className="p-6 rounded-xl border border-white/10 mb-6" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
