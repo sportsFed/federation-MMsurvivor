@@ -52,8 +52,8 @@ function getEasternDateKey(isoString: string): string {
 
 const ELITE_EIGHT_REQUIRED_PICKS = 2;
 const FINAL_FOUR_DEADLINE = new Date('2026-03-19T16:15:00Z');
-const SAT_ISO = '2026-03-22T12:00:00-04:00';
-const SUN_ISO = '2026-03-23T12:00:00-04:00';
+const SAT_ISO = '2026-03-21T12:00:00-04:00';
+const SUN_ISO = '2026-03-22T12:00:00-04:00';
 
 function formatCountdown(isoString: string, now: Date): string | null {
   const target = new Date(isoString);
