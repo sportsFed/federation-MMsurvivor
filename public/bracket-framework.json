@@ -26,7 +26,7 @@
     { "name": "California Baptist", "seed": 13, "region": "East" },
     { "name": "North Dakota St.", "seed": 14, "region": "East" },
     { "name": "Furman", "seed": 15, "region": "East" },
-    { "name": "Siena/UMBC", "seed": 16, "region": "East" },
+    { "name": "Siena", "seed": 16, "region": "East" },
 
     { "name": "Arizona", "seed": 1, "region": "West" },
     { "name": "Purdue", "seed": 2, "region": "West" },
@@ -77,7 +77,7 @@
     { "name": "Hofstra", "seed": 13, "region": "Midwest" },
     { "name": "Wright St.", "seed": 14, "region": "Midwest" },
     { "name": "Tennessee St.", "seed": 15, "region": "Midwest" },
-    { "name": "Howard/UMBC", "seed": 16, "region": "Midwest" }
+    { "name": "Howard", "seed": 16, "region": "Midwest" }
   ],
   "games": [
     { "id": "E-R64-G1", "round": "Round of 64", "region": "East", "day": "thursday", "scheduledTime": null, "participants": [{ "type": "seed", "region": "East", "seed": 1 }, { "type": "seed", "region": "East", "seed": 16 }] },
