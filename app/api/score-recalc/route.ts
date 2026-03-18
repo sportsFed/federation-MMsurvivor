@@ -16,6 +16,9 @@ export async function POST(request: Request) {
         newTotal += calculateSurvivorScore(pick.seed, pick.round);
       });
 
+      // Include any already-awarded finalFourPoints (set by score-final-four endpoint)
+      newTotal += data.finalFourPoints ?? 0;
+
       await updateDoc(doc(db, 'entries', entryDoc.id), { totalPoints: newTotal });
     }
 
