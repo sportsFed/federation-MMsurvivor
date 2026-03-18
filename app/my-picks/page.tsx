@@ -14,7 +14,6 @@ import {
   type FrameworkGame,
   type GameProjection,
   type ProjectedTeam,
-  type Region,
 } from '@/lib/bracket/framework';
 
 function formatEasternTime(isoString: string): string {
@@ -162,7 +161,6 @@ export default function MyPicksPage() {
   const [confirmPick, setConfirmPick] = useState<{ team: string; seed: number; game: any } | null>(null);
   const [confirmProjectionPick, setConfirmProjectionPick] = useState<{ team: string; seed: number; frameworkGameId: string; round: string; region: string | null } | null>(null);
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
-  const [projectionPicks, setProjectionPicks] = useState<any[]>([]);
   const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
 
   const showMessage = (msg: string, ms = 5000) => {
@@ -191,13 +189,14 @@ export default function MyPicksPage() {
           // Build projection model
           const fw = getFramework();
           const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
-          const allGames = gamesSnap.docs.map(d => ({ id: d.id, ...d.data() as { region: string; homeSeed: number; awaySeed: number; winner: string | null; isComplete: boolean } }));
-          const bracketKeyMap = buildFirestoreGamesBracketKeyMap(allGames);
+          const allGames = gamesSnap.docs.map(d => ({ id: d.id, ...d.data() as { region: string; homeSeed: number; awaySeed: number; winner: string | null; isComplete: boolean; isSkeletonGame?: boolean } }));
+          // Only map R64 games (real seeded games, not skeleton) to bracket keys
+          const r64Games = allGames.filter(g => !g.isSkeletonGame && g.homeSeed && g.awaySeed);
+          const bracketKeyMap = buildFirestoreGamesBracketKeyMap(r64Games);
           setProjectionModel(buildProjectionModel(bracketKeyMap, teamsByRegionSeed));
           // Load existing projection picks from entry
           if (entrySnap.exists()) {
-            const picks = (entrySnap.data()?.survivorPicks ?? []) as any[];
-            setProjectionPicks(picks.filter((p: any) => p.isProjectionPick === true));
+            // projection picks are stored within survivorPicks (isProjectionPick: true) — already loaded via setUserEntry above
           }
         } catch (err: any) {
           showMessage(`Error loading data: ${err.message}`);
@@ -432,7 +431,6 @@ export default function MyPicksPage() {
         ...prev,
         survivorPicks: updatedPicks,
       }));
-      setProjectionPicks(updatedPicks.filter((p: any) => p.isProjectionPick === true));
       showMessage(`✅ Conditional pick: ${team}`);
     } catch (err: any) {
       showMessage(`Error: ${err.message}`);
@@ -755,9 +753,10 @@ export default function MyPicksPage() {
                       userProjectionPick={userPick}
                       allUsedTeams={alreadyPickedTeams}
                       isLocked={false}
-                      onPickTeam={(team, fgId, round, region) =>
-                        setConfirmProjectionPick({ team, seed: proj.allPossibleTeams.find(t => t.name === team)?.seed ?? 0, frameworkGameId: fgId, round, region })
-                      }
+                      onPickTeam={(team, fgId, round, region) => {
+                        const teamSeed = proj.allPossibleTeams.find(t => t.name === team)?.seed ?? 0;
+                        setConfirmProjectionPick({ team, seed: teamSeed, frameworkGameId: fgId, round, region });
+                      }}
                     />
                   );
                 })}
