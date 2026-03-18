@@ -77,12 +77,26 @@ function formatCountdown(isoString: string, now: Date): string | null {
   return `${seconds}s`;
 }
 
+/**
+ * Returns the lock time ISO string for a framework game.
+ * Uses the game's own scheduledTime if available, otherwise falls back to
+ * the day-level constant (SAT_ISO for saturday, SUN_ISO for sunday).
+ */
+function getProjectionGameLockTime(fwGame: FrameworkGame | undefined): string | null {
+  if (!fwGame) return null;
+  if (fwGame.scheduledTime) return fwGame.scheduledTime;
+  if (fwGame.day === 'saturday') return SAT_ISO;
+  if (fwGame.day === 'sunday') return SUN_ISO;
+  return null;
+}
+
 interface ProjectionPickCardProps {
   frameworkGame: FrameworkGame;
   projection: GameProjection;
   userProjectionPick: string | null;
   allUsedTeams: string[];
   isLocked: boolean;
+  now: Date;
   onPickTeam: (team: string, frameworkGameId: string, round: string, region: string | null) => void;
 }
 
@@ -92,9 +106,13 @@ function ProjectionPickCard({
   userProjectionPick,
   allUsedTeams,
   isLocked,
+  now,
   onPickTeam,
 }: ProjectionPickCardProps) {
   const { homeSide, awaySide } = projection;
+  const scheduledTime = frameworkGame.scheduledTime;
+  const timeDisplay = scheduledTime ? formatEasternTime(scheduledTime) : null;
+  const countdown = (!isLocked && scheduledTime) ? formatCountdown(scheduledTime, now) : null;
 
   function TeamChip({ team }: { team: ProjectedTeam }) {
     const isSelected = userProjectionPick === team.name;
@@ -131,11 +149,18 @@ function ProjectionPickCard({
         <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
           {frameworkGame.region} · {frameworkGame.round}
         </span>
-        {isLocked ? (
-          <span className="text-[11px] text-slate-500">🔒 Tip time TBD</span>
-        ) : (
-          <span className="text-[11px] text-amber-400/70 font-sans">Tip time TBD</span>
-        )}
+        <div className="flex items-center gap-2">
+          {timeDisplay && (
+            <span className="text-[11px] text-slate-400 font-sans">{timeDisplay} ET</span>
+          )}
+          {isLocked ? (
+            <span className="text-[11px] text-slate-500">🔒 Locked</span>
+          ) : countdown ? (
+            <span className="text-[11px] text-amber-400 font-mono font-semibold">⏱ {countdown}</span>
+          ) : !timeDisplay ? (
+            <span className="text-[11px] text-amber-400/70 font-sans">Tip time TBD</span>
+          ) : null}
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
@@ -246,8 +271,14 @@ export default function MyPicksPage() {
     .filter((p: any) => p.isProjectionPick === true && p.result !== 'win' && p.result !== 'loss')
     .map((p: any) => p.team);
 
-  // alreadyPickedTeams: used for "can't reuse" check — includes scored picks AND pending projection picks
-  const alreadyPickedTeams: string[] = [...new Set([...scoredPickedTeams, ...pendingProjectionPickTeams])];
+  // Pending regular picks (submitted but not yet scored, not projection) — also count as used
+  const pendingRegularPickTeams: string[] = (userEntry?.survivorPicks ?? [])
+    .filter((p: any) => !p.isProjectionPick && p.result !== 'win' && p.result !== 'loss')
+    .map((p: any) => p.team);
+
+  // alreadyPickedTeams: used for "can't reuse" check — includes scored picks, pending projection picks,
+  // and pending regular picks (so teams locked in for upcoming games are also blocked)
+  const alreadyPickedTeams: string[] = [...new Set([...scoredPickedTeams, ...pendingProjectionPickTeams, ...pendingRegularPickTeams])];
 
   // Helper: derive effective dateKey for a pick (backward compat for picks without dateKey)
   const getEffectivePickDateKey = (pick: any): string | null => {
@@ -381,12 +412,18 @@ export default function MyPicksPage() {
       showMessage('You must be logged in to submit a pick.');
       return;
     }
+    // Check projection game hasn't locked yet
+    const fwGame = getFramework().games.find(g => g.id === frameworkGameId);
+    const lockTime = getProjectionGameLockTime(fwGame);
+    if (lockTime && new Date() >= new Date(lockTime)) {
+      showMessage('This game has already started — pick is locked.');
+      return;
+    }
     if (alreadyPickedTeams.includes(team)) {
       showMessage(`You already used ${team} in a pick.`, 4000);
       return;
     }
 
-    const fwGame = getFramework().games.find(g => g.id === frameworkGameId);
     const day = fwGame?.day ?? 'tbd';
     const dateKey = day === 'saturday' ? '__sat__' : day === 'sunday' ? '__sun__' : '__proj__';
 
@@ -563,14 +600,20 @@ export default function MyPicksPage() {
       dateKey: '__sat__',
       label: formatEasternTabLabel(SAT_ISO),
       isEliteEight: false,
-      hasUnlockedGames: true,
+      hasUnlockedGames: listFrameworkGamesByDay('saturday').some(g => {
+        const t = getProjectionGameLockTime(g);
+        return t ? now < new Date(t) : now < new Date(SAT_ISO);
+      }),
       pickStatus: satPickVoided ? 'voided-pick' : satProjectionPick ? 'has-pick' : 'missing-pick',
     },
     {
       dateKey: '__sun__',
       label: formatEasternTabLabel(SUN_ISO),
       isEliteEight: false,
-      hasUnlockedGames: true,
+      hasUnlockedGames: listFrameworkGamesByDay('sunday').some(g => {
+        const t = getProjectionGameLockTime(g);
+        return t ? now < new Date(t) : now < new Date(SUN_ISO);
+      }),
       pickStatus: sunPickVoided ? 'voided-pick' : sunProjectionPick ? 'has-pick' : 'missing-pick',
     },
     {
@@ -819,7 +862,8 @@ export default function MyPicksPage() {
                       projection={proj}
                       userProjectionPick={userPick}
                       allUsedTeams={alreadyPickedTeams}
-                      isLocked={false}
+                      isLocked={(() => { const t = getProjectionGameLockTime(game); return t ? now >= new Date(t) : false; })()}
+                      now={now}
                       onPickTeam={(team, fgId, round, region) => {
                         const teamSeed = proj.allPossibleTeams.find(t => t.name === team)?.seed ?? 0;
                         setConfirmProjectionPick({ team, seed: teamSeed, frameworkGameId: fgId, round, region });
