@@ -5,6 +5,17 @@ import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, getDocs, doc, getDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import {
+  buildTeamsByRegionSeed,
+  buildFirestoreGamesBracketKeyMap,
+  buildProjectionModel,
+  listFrameworkGamesByDay,
+  getFramework,
+  type FrameworkGame,
+  type GameProjection,
+  type ProjectedTeam,
+  type Region,
+} from '@/lib/bracket/framework';
 
 function formatEasternTime(isoString: string): string {
   const d = new Date(isoString);
@@ -56,6 +67,89 @@ function formatCountdown(isoString: string, now: Date): string | null {
   return `${seconds}s`;
 }
 
+interface ProjectionPickCardProps {
+  frameworkGame: FrameworkGame;
+  projection: GameProjection;
+  userProjectionPick: string | null;
+  allUsedTeams: string[];
+  isLocked: boolean;
+  onPickTeam: (team: string, frameworkGameId: string, round: string, region: string | null) => void;
+}
+
+function ProjectionPickCard({
+  frameworkGame,
+  projection,
+  userProjectionPick,
+  allUsedTeams,
+  isLocked,
+  onPickTeam,
+}: ProjectionPickCardProps) {
+  const { homeSide, awaySide } = projection;
+
+  function TeamChip({ team }: { team: ProjectedTeam }) {
+    const isSelected = userProjectionPick === team.name;
+    const isUsed = allUsedTeams.includes(team.name) && !isSelected;
+    const canPick = !isLocked && !isUsed;
+    return (
+      <button
+        onClick={() => canPick && onPickTeam(team.name, frameworkGame.id, frameworkGame.round, frameworkGame.region)}
+        disabled={!canPick}
+        className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left w-full ${
+          isSelected
+            ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-pointer hover:bg-green-700/60'
+            : isUsed
+            ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
+            : isLocked
+            ? 'bg-slate-800/60 border border-slate-700/40 text-slate-500 cursor-default'
+            : 'bg-slate-700/60 hover:bg-red-700/50 hover:border-red-500/50 border border-slate-600 text-white cursor-pointer'
+        }`}
+      >
+        <span className="text-[10px] text-slate-500 block mb-0.5">#{team.seed}</span>
+        <span className="block leading-tight text-xs">{team.name}</span>
+        {isSelected && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
+        {isUsed && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
+        {isLocked && !isSelected && !isUsed && (
+          <span className="text-[10px] text-slate-600 mt-0.5 block">Locked</span>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <div className={`bg-slate-800/40 border rounded-xl p-3 mb-2 transition-all ${isLocked ? 'border-slate-700/50 opacity-70' : 'border-slate-700'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
+          {frameworkGame.region} · {frameworkGame.round}
+        </span>
+        {isLocked ? (
+          <span className="text-[11px] text-slate-500">🔒 Tip time TBD</span>
+        ) : (
+          <span className="text-[11px] text-amber-400/70 font-sans">Tip time TBD</span>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          {homeSide.possibleTeams.map(team => (
+            <TeamChip key={team.name} team={team} />
+          ))}
+          {homeSide.possibleTeams.length === 0 && (
+            <div className="rounded-lg px-3 py-2.5 bg-slate-800/60 border border-slate-700/40 text-slate-500 text-xs">TBD</div>
+          )}
+        </div>
+        <div className="space-y-1">
+          {awaySide.possibleTeams.map(team => (
+            <TeamChip key={team.name} team={team} />
+          ))}
+          {awaySide.possibleTeams.length === 0 && (
+            <div className="rounded-lg px-3 py-2.5 bg-slate-800/60 border border-slate-700/40 text-slate-500 text-xs">TBD</div>
+          )}
+        </div>
+      </div>
+      <p className="text-[10px] text-slate-600 italic mt-2 font-sans">Conditional pick — valid if team advances</p>
+    </div>
+  );
+}
+
 export default function MyPicksPage() {
   const router = useRouter();
   const [games, setGames] = useState<any[]>([]);
@@ -66,7 +160,10 @@ export default function MyPicksPage() {
   const [pickMessage, setPickMessage] = useState('');
   const [now, setNow] = useState(() => new Date());
   const [confirmPick, setConfirmPick] = useState<{ team: string; seed: number; game: any } | null>(null);
+  const [confirmProjectionPick, setConfirmProjectionPick] = useState<{ team: string; seed: number; frameworkGameId: string; round: string; region: string | null } | null>(null);
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
+  const [projectionPicks, setProjectionPicks] = useState<any[]>([]);
+  const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
 
   const showMessage = (msg: string, ms = 5000) => {
     setPickMessage(msg);
@@ -91,6 +188,17 @@ export default function MyPicksPage() {
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
           setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           setAllEntries(entriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          // Build projection model
+          const fw = getFramework();
+          const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
+          const allGames = gamesSnap.docs.map(d => ({ id: d.id, ...d.data() as { region: string; homeSeed: number; awaySeed: number; winner: string | null; isComplete: boolean } }));
+          const bracketKeyMap = buildFirestoreGamesBracketKeyMap(allGames);
+          setProjectionModel(buildProjectionModel(bracketKeyMap, teamsByRegionSeed));
+          // Load existing projection picks from entry
+          if (entrySnap.exists()) {
+            const picks = (entrySnap.data()?.survivorPicks ?? []) as any[];
+            setProjectionPicks(picks.filter((p: any) => p.isProjectionPick === true));
+          }
         } catch (err: any) {
           showMessage(`Error loading data: ${err.message}`);
         }
@@ -116,10 +224,17 @@ export default function MyPicksPage() {
     }
   }
 
-  // Only count teams from rounds that have already been scored as "used"
-  const alreadyPickedTeams: string[] = (userEntry?.survivorPicks ?? [])
+  // Count teams from scored rounds + pending projection picks as "used"
+  const scoredPickedTeams: string[] = (userEntry?.survivorPicks ?? [])
     .filter((p: any) => p.result === 'win' || p.result === 'loss')
     .map((p: any) => p.team);
+
+  const pendingProjectionPickTeams: string[] = (userEntry?.survivorPicks ?? [])
+    .filter((p: any) => p.isProjectionPick === true && p.result !== 'win' && p.result !== 'loss')
+    .map((p: any) => p.team);
+
+  // alreadyPickedTeams: used for "can't reuse" check — includes scored picks AND pending projection picks
+  const alreadyPickedTeams: string[] = [...new Set([...scoredPickedTeams, ...pendingProjectionPickTeams])];
 
   // Helper: derive effective dateKey for a pick (backward compat for picks without dateKey)
   const getEffectivePickDateKey = (pick: any): string | null => {
@@ -243,6 +358,87 @@ export default function MyPicksPage() {
     }
   };
 
+  const handleProjectionPick = async (
+    team: string,
+    frameworkGameId: string,
+    round: string,
+    region: string | null
+  ) => {
+    if (!userId || !userEntry) {
+      showMessage('You must be logged in to submit a pick.');
+      return;
+    }
+    if (alreadyPickedTeams.includes(team)) {
+      showMessage(`You already used ${team} in a pick.`, 4000);
+      return;
+    }
+
+    const fwGame = getFramework().games.find(g => g.id === frameworkGameId);
+    const day = fwGame?.day ?? 'tbd';
+    const dateKey = day === 'saturday' ? '__sat__' : day === 'sunday' ? '__sun__' : '__proj__';
+
+    try {
+      const entryRef = doc(db, 'entries', userId);
+      const newPickEntry = {
+        team,
+        round,
+        region,
+        gameId: frameworkGameId,
+        dateKey,
+        isProjectionPick: true,
+        pickedAt: new Date().toISOString(),
+      };
+
+      const existingPicks: any[] = userEntry?.survivorPicks ?? [];
+      // Replace existing pick for this framework game, or append
+      const hasPickForThisGame = existingPicks.some((p: any) => p.gameId === frameworkGameId && p.isProjectionPick);
+      let updatedPicks: any[];
+      let action: string;
+      let previousTeam: string | null;
+
+      if (hasPickForThisGame) {
+        previousTeam = existingPicks.find((p: any) => p.gameId === frameworkGameId && p.isProjectionPick)?.team ?? null;
+        updatedPicks = existingPicks.map((p: any) =>
+          p.gameId === frameworkGameId && p.isProjectionPick ? newPickEntry : p
+        );
+        action = 'changed';
+      } else {
+        updatedPicks = [...existingPicks, newPickEntry];
+        previousTeam = null;
+        action = 'submitted';
+      }
+
+      await updateDoc(entryRef, {
+        survivorPicks: updatedPicks,
+      });
+      try {
+        await addDoc(collection(db, 'pickLog'), {
+          userId,
+          displayName: userEntry?.displayName ?? '',
+          team,
+          round,
+          region,
+          gameId: frameworkGameId,
+          dateKey,
+          action,
+          previousTeam,
+          isProjectionPick: true,
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        // Non-fatal
+      }
+      setUserEntry((prev: any) => ({
+        ...prev,
+        survivorPicks: updatedPicks,
+      }));
+      setProjectionPicks(updatedPicks.filter((p: any) => p.isProjectionPick === true));
+      showMessage(`✅ Conditional pick: ${team}`);
+    } catch (err: any) {
+      showMessage(`Error: ${err.message}`);
+    }
+  };
+
   // Sort games chronologically
   const sortedGames = [...games].sort((a, b) => {
     const aTime = new Date(a.gameTime ?? a.tipoff ?? 0).getTime();
@@ -310,10 +506,42 @@ export default function MyPicksPage() {
     return { dateKey, label, isEliteEight, hasUnlockedGames, pickStatus };
   });
 
+  // Add Saturday, Sunday, Projections tabs (always shown after Firestore tabs)
+  const satProjectionPick = (userEntry?.survivorPicks ?? []).some(
+    (p: any) => p.isProjectionPick && p.dateKey === '__sat__'
+  );
+  const sunProjectionPick = (userEntry?.survivorPicks ?? []).some(
+    (p: any) => p.isProjectionPick && p.dateKey === '__sun__'
+  );
+  const extraTabs: DayTab[] = [
+    {
+      dateKey: '__sat__',
+      label: 'Sat',
+      isEliteEight: false,
+      hasUnlockedGames: true,
+      pickStatus: satProjectionPick ? 'has-pick' : 'missing-pick',
+    },
+    {
+      dateKey: '__sun__',
+      label: 'Sun',
+      isEliteEight: false,
+      hasUnlockedGames: true,
+      pickStatus: sunProjectionPick ? 'has-pick' : 'missing-pick',
+    },
+    {
+      dateKey: '__proj__',
+      label: 'Projections',
+      isEliteEight: false,
+      hasUnlockedGames: false,
+      pickStatus: 'complete',
+    },
+  ];
+  const allTabs = [...dayTabs, ...extraTabs];
+
   // Initialize active tab: first day with unlocked games, else first day
   const initialTabKey = (() => {
-    const firstUnlocked = dayTabs.find(t => t.hasUnlockedGames);
-    return firstUnlocked?.dateKey ?? dayTabs[0]?.dateKey ?? null;
+    const firstUnlocked = allTabs.find(t => t.hasUnlockedGames);
+    return firstUnlocked?.dateKey ?? allTabs[0]?.dateKey ?? null;
   })();
 
   const effectiveActiveTab = activeTabKey ?? initialTabKey;
@@ -430,13 +658,27 @@ export default function MyPicksPage() {
       )}
 
       {/* Previously Picked (scored rounds only) */}
-      {alreadyPickedTeams.length > 0 && (
+      {scoredPickedTeams.length > 0 && (
         <div className="mb-4">
           <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-2">Used Picks</p>
           <div className="flex flex-wrap gap-1.5">
-            {alreadyPickedTeams.map((team: string) => (
+            {scoredPickedTeams.map((team: string) => (
               <span key={team} className="text-xs px-2.5 py-1 rounded-full border border-red-500/30 text-red-400 bg-red-900/20 font-sans">
                 {team}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Conditional Picks (pending projection picks) */}
+      {pendingProjectionPickTeams.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-2">Conditional Picks</p>
+          <div className="flex flex-wrap gap-1.5">
+            {pendingProjectionPickTeams.map((team: string) => (
+              <span key={team} className="text-xs px-2.5 py-1 rounded-full border border-amber-500/30 text-amber-400/70 bg-amber-900/10 font-sans">
+                {team} <span className="text-slate-600 text-[10px]">conditional</span>
               </span>
             ))}
           </div>
@@ -459,7 +701,7 @@ export default function MyPicksPage() {
           {dayTabs.length > 0 && (
             <div className="sticky top-0 z-10 bg-[#0b1120]/95 backdrop-blur-sm border-b border-slate-800 mb-4 -mx-4 px-4 pb-2 pt-1">
               <div className="flex gap-1 overflow-x-auto scrollbar-none">
-                {dayTabs.map((tab) => {
+                {allTabs.map((tab) => {
                   const isActive = tab.dateKey === effectiveActiveTab;
                   const allComplete = tab.pickStatus === 'complete';
                   return (
@@ -489,6 +731,98 @@ export default function MyPicksPage() {
               </div>
             </div>
           )}
+
+          {/* Saturday / Sunday Projection Pick tabs */}
+          {(effectiveActiveTab === '__sat__' || effectiveActiveTab === '__sun__') && (() => {
+            const dayKey = effectiveActiveTab === '__sat__' ? 'saturday' : 'sunday';
+            const r32Games = listFrameworkGamesByDay(dayKey as 'saturday' | 'sunday');
+            return (
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-3">
+                  Round of 32 — {effectiveActiveTab === '__sat__' ? 'Saturday, March 22' : 'Sunday, March 23'}
+                </p>
+                {r32Games.map(game => {
+                  const proj = projectionModel.get(game.id);
+                  if (!proj) return null;
+                  const userPick = (userEntry?.survivorPicks ?? []).find(
+                    (p: any) => p.gameId === game.id && p.isProjectionPick
+                  )?.team ?? null;
+                  return (
+                    <ProjectionPickCard
+                      key={game.id}
+                      frameworkGame={game}
+                      projection={proj}
+                      userProjectionPick={userPick}
+                      allUsedTeams={alreadyPickedTeams}
+                      isLocked={false}
+                      onPickTeam={(team, fgId, round, region) =>
+                        setConfirmProjectionPick({ team, seed: proj.allPossibleTeams.find(t => t.name === team)?.seed ?? 0, frameworkGameId: fgId, round, region })
+                      }
+                    />
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* Projections tab — Sweet 16 + Elite Eight view-only */}
+          {effectiveActiveTab === '__proj__' && (() => {
+            const s16Games = listFrameworkGamesByDay('tbd').filter(g => g.round === 'Sweet 16' || g.round === 'Elite Eight');
+            return (
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-3">
+                  Projected Matchups — View Only
+                </p>
+                {['Sweet 16', 'Elite Eight'].map(roundName => {
+                  const games = s16Games.filter(g => g.round === roundName);
+                  if (games.length === 0) return null;
+                  return (
+                    <div key={roundName} className="mb-6">
+                      <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2 font-sans">{roundName}</p>
+                      {games.map(game => {
+                        const proj = projectionModel.get(game.id);
+                        if (!proj) return null;
+                        return (
+                          <div key={game.id} className="bg-slate-800/20 border border-slate-700/40 rounded-xl p-3 mb-2 opacity-70">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
+                                {game.region} · {game.round}
+                              </span>
+                              <span className="text-[10px] text-slate-600 italic font-sans">Projection — no picks</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                {proj.homeSide.possibleTeams.map(t => (
+                                  <div key={t.name} className="rounded-lg px-3 py-2 bg-slate-800/60 border border-slate-700/40 text-slate-400 text-xs">
+                                    <span className="text-[10px] text-slate-600 block">#{t.seed}</span>
+                                    {t.name}
+                                  </div>
+                                ))}
+                                {proj.homeSide.possibleTeams.length === 0 && (
+                                  <div className="rounded-lg px-3 py-2 bg-slate-800/60 border border-slate-700/40 text-slate-500 text-xs">TBD</div>
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                {proj.awaySide.possibleTeams.map(t => (
+                                  <div key={t.name} className="rounded-lg px-3 py-2 bg-slate-800/60 border border-slate-700/40 text-slate-400 text-xs">
+                                    <span className="text-[10px] text-slate-600 block">#{t.seed}</span>
+                                    {t.name}
+                                  </div>
+                                ))}
+                                {proj.awaySide.possibleTeams.length === 0 && (
+                                  <div className="rounded-lg px-3 py-2 bg-slate-800/60 border border-slate-700/40 text-slate-500 text-xs">TBD</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Active Tab Games */}
           {effectiveActiveTab && gamesByDay[effectiveActiveTab] && (() => {
@@ -744,6 +1078,41 @@ export default function MyPicksPage() {
                   const pick = confirmPick;
                   setConfirmPick(null);
                   await handlePickTeam(pick.team, pick.game);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-fedRed hover:bg-red-700 text-white font-sans text-sm font-semibold transition"
+              >
+                Confirm Pick
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Projection Pick Confirmation Modal */}
+      {confirmProjectionPick && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl">
+            <div className="text-4xl mb-3">🏀</div>
+            <h3 className="font-bebas text-2xl text-white tracking-widest mb-1">Confirm Conditional Pick</h3>
+            <p className="text-slate-400 text-sm mb-1 font-sans">{confirmProjectionPick.region} · {confirmProjectionPick.round}</p>
+            <div className="my-4 py-3 px-4 bg-slate-800 rounded-xl border border-slate-600">
+              <p className="text-xs text-slate-500 uppercase tracking-widest mb-1 font-sans">You are picking</p>
+              <p className="font-bebas text-3xl text-white tracking-wide">#{confirmProjectionPick.seed} {confirmProjectionPick.team}</p>
+            </div>
+            <p className="text-xs text-slate-500 font-sans mb-2">This is a conditional pick. It is only valid if this team advances from the Round of 64.</p>
+            <p className="text-xs text-amber-400/70 font-sans mb-5">Once confirmed, you can change this pick until the game tips off.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmProjectionPick(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 font-sans text-sm transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const pick = confirmProjectionPick;
+                  setConfirmProjectionPick(null);
+                  await handleProjectionPick(pick.team, pick.frameworkGameId, pick.round, pick.region);
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-fedRed hover:bg-red-700 text-white font-sans text-sm font-semibold transition"
               >
