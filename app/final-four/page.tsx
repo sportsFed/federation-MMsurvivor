@@ -12,6 +12,22 @@ const SLOT_REGIONS: Record<string, string> = {
   f4: 'Midwest',
 };
 
+const FINAL_FOUR_DEADLINE = new Date('2026-03-19T16:15:00Z');
+
+function formatCountdown(isoString: string, now: Date): string | null {
+  const target = new Date(isoString);
+  const diff = target.getTime() - now.getTime();
+  if (diff <= 0) return null;
+  const totalSeconds = Math.floor(diff / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 24) return null;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 export default function FinalFourPage() {
   const [teams, setTeams] = useState<any[]>([]);
   const [picks, setPicks] = useState({ f1: '', f2: '', f3: '', f4: '', champ: '' });
@@ -19,6 +35,16 @@ export default function FinalFourPage() {
   const [locked, setLocked] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const isDeadlineLocked = now >= FINAL_FOUR_DEADLINE;
+  const effectiveLocked = locked || isDeadlineLocked;
+  const countdown = formatCountdown(FINAL_FOUR_DEADLINE.toISOString(), now);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -50,7 +76,7 @@ export default function FinalFourPage() {
   }, []);
 
   const savePicks = async () => {
-    if (!user || locked) return;
+    if (!user || effectiveLocked) return;
     await setDoc(doc(db, 'entries', user.uid), { finalFourPicks: picks }, { merge: true });
     setSaveMessage('✅ Picks saved successfully!');
     setTimeout(() => setSaveMessage(''), 5000);
@@ -85,10 +111,10 @@ export default function FinalFourPage() {
         Pre-Tournament Picks
       </h1>
       <p className="text-slate-400 mb-8 text-sm font-sans">
-        Select your Final Four teams and National Champion. These lock at tip-off.
+        Select your Final Four teams and National Champion. These lock at <strong>12:15 PM ET on Thursday, March 19</strong>.
       </p>
 
-      {locked && (
+      {effectiveLocked && (
         <div className="mb-6 p-3 rounded bg-amber-900/30 border border-amber-500/50 text-amber-400 text-sm font-sans">
           🔒 Your picks are locked and cannot be changed.
         </div>
@@ -105,8 +131,8 @@ export default function FinalFourPage() {
               </label>
               <select
                 value={picks[slot]}
-                onChange={(e) => !locked && setPicks({ ...picks, [slot]: e.target.value })}
-                disabled={locked}
+                onChange={(e) => !effectiveLocked && setPicks({ ...picks, [slot]: e.target.value })}
+                disabled={effectiveLocked}
                 className="w-full bg-slate-900 border border-slate-700 text-white rounded p-2 font-sans text-sm disabled:opacity-50"
               >
                 <option value="">Select a Team...</option>
@@ -127,8 +153,8 @@ export default function FinalFourPage() {
         </h2>
         <select
           value={picks.champ}
-          onChange={(e) => !locked && setPicks({ ...picks, champ: e.target.value })}
-          disabled={locked}
+          onChange={(e) => !effectiveLocked && setPicks({ ...picks, champ: e.target.value })}
+          disabled={effectiveLocked}
           className="w-full bg-slate-900 border border-slate-700 text-white rounded p-2 font-sans text-sm disabled:opacity-50"
         >
           <option value="">Select Champion...</option>
@@ -146,10 +172,16 @@ export default function FinalFourPage() {
         </div>
       )}
 
+      {!effectiveLocked && countdown && (
+        <div className="mb-4 text-center text-amber-400 text-sm font-mono font-semibold">
+          ⏱ Locks in {countdown}
+        </div>
+      )}
+
       <div className="text-center">
         <button
           onClick={savePicks}
-          disabled={locked}
+          disabled={effectiveLocked}
           className="bg-fedRed hover:bg-red-700 text-white font-sans font-semibold tracking-wide text-base px-10 py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase"
         >
           Save All Picks
