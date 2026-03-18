@@ -83,6 +83,8 @@ interface ProjectionPickCardProps {
   userProjectionPick: string | null;
   allUsedTeams: string[];
   isLocked: boolean;
+  gameTime?: string | null;
+  now?: Date;
   onPickTeam: (team: string, frameworkGameId: string, round: string, region: string | null) => void;
 }
 
@@ -92,9 +94,13 @@ function ProjectionPickCard({
   userProjectionPick,
   allUsedTeams,
   isLocked,
+  gameTime,
+  now,
   onPickTeam,
 }: ProjectionPickCardProps) {
   const { homeSide, awaySide } = projection;
+  const easternTime = gameTime ? formatEasternTime(gameTime) : null;
+  const countdown = (!isLocked && gameTime && now) ? formatCountdown(gameTime, now) : null;
 
   function TeamChip({ team }: { team: ProjectedTeam }) {
     const isSelected = userProjectionPick === team.name;
@@ -132,7 +138,12 @@ function ProjectionPickCard({
           {frameworkGame.region} · {frameworkGame.round}
         </span>
         {isLocked ? (
-          <span className="text-[11px] text-slate-500">🔒 Tip time TBD</span>
+          <span className="text-[11px] text-slate-500">🔒 {easternTime ? `${easternTime} ET` : 'Tip time TBD'}</span>
+        ) : easternTime ? (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-400 font-sans">{easternTime} ET</span>
+            {countdown && <span className="text-[11px] text-amber-400 font-mono font-semibold">⏱ {countdown}</span>}
+          </div>
         ) : (
           <span className="text-[11px] text-amber-400/70 font-sans">Tip time TBD</span>
         )}
@@ -379,6 +390,13 @@ export default function MyPicksPage() {
   ) => {
     if (!userId || !userEntry) {
       showMessage('You must be logged in to submit a pick.');
+      return;
+    }
+    // Check game lock for R32 skeleton game
+    const skeletonGame = games.find((g: any) => g.id === frameworkGameId);
+    const projGameTime = skeletonGame?.gameTime ?? null;
+    if (projGameTime && new Date() >= new Date(projGameTime)) {
+      showMessage('This game has already started — pick is locked.');
       return;
     }
     if (alreadyPickedTeams.includes(team)) {
@@ -812,6 +830,9 @@ export default function MyPicksPage() {
                   const userPick = (userEntry?.survivorPicks ?? []).find(
                     (p: any) => p.gameId === game.id && p.isProjectionPick
                   )?.team ?? null;
+                  const skeletonGame = games.find((g: any) => g.id === game.id);
+                  const r32GameTime = skeletonGame?.gameTime ?? null;
+                  const isR32Locked = r32GameTime ? now >= new Date(r32GameTime) : false;
                   return (
                     <ProjectionPickCard
                       key={game.id}
@@ -819,7 +840,9 @@ export default function MyPicksPage() {
                       projection={proj}
                       userProjectionPick={userPick}
                       allUsedTeams={alreadyPickedTeams}
-                      isLocked={false}
+                      isLocked={isR32Locked}
+                      gameTime={r32GameTime}
+                      now={now}
                       onPickTeam={(team, fgId, round, region) => {
                         const teamSeed = proj.allPossibleTeams.find(t => t.name === team)?.seed ?? 0;
                         setConfirmProjectionPick({ team, seed: teamSeed, frameworkGameId: fgId, round, region });
