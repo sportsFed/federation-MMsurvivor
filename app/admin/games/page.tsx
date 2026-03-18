@@ -3,6 +3,13 @@
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase/clientApp';
 import { collection, getDocs } from 'firebase/firestore';
+import {
+  buildTeamsByRegionSeed,
+  buildFirestoreGamesBracketKeyMap,
+  buildProjectionModel,
+  getFramework,
+  type GameProjection,
+} from '@/lib/bracket/framework';
 
 function formatEasternDateLabel(isoString: string): string {
   const d = new Date(isoString);
@@ -26,6 +33,8 @@ export default function AdminGamesPage() {
   const [winnerInputs, setWinnerInputs] = useState<Record<string, string>>({});
   const [editTimeInputs, setEditTimeInputs] = useState<Record<string, string>>({});
   const [editingTime, setEditingTime] = useState<string | null>(null);
+  const [creatingR32, setCreatingR32] = useState(false);
+  const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
 
   function isoToDatetimeLocal(iso: string): string {
     return iso.slice(0, 16);
@@ -43,6 +52,22 @@ export default function AdminGamesPage() {
         return aTime - bTime;
       });
       setGames(allGames);
+      // Build projection model for skeleton games (only use R64 games with real team data)
+      const fw = getFramework();
+      const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
+      const bracketKeyMap = buildFirestoreGamesBracketKeyMap(
+        allGames
+          .filter(g => !g.isSkeletonGame && g.region && g.homeSeed && g.awaySeed)
+          .map(g => ({
+            id: g.id,
+            region: g.region as string,
+            homeSeed: g.homeSeed as number,
+            awaySeed: g.awaySeed as number,
+            winner: g.winner ?? null,
+            isComplete: g.isComplete ?? false,
+          }))
+      );
+      setProjectionModel(buildProjectionModel(bracketKeyMap, teamsByRegionSeed));
     } catch {
       setGames([]);
     }
@@ -98,6 +123,25 @@ export default function AdminGamesPage() {
     setTimeout(() => setActionMessage(''), 3000);
   };
 
+  const handleCreateR32Skeleton = async () => {
+    setCreatingR32(true);
+    try {
+      const res = await fetch('/api/admin/create-r32-skeleton', { method: 'POST' });
+      if (res.ok) {
+        const { created, skipped } = await res.json();
+        setActionMessage(`Created ${created} Round of 32 skeleton game${created !== 1 ? 's' : ''} (${skipped} already existed — skipped)`);
+        fetchGames();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionMessage(`Error: ${data.error ?? 'Unknown error'}`);
+      }
+    } catch {
+      setActionMessage('Error creating skeleton games.');
+    }
+    setTimeout(() => setActionMessage(''), 6000);
+    setCreatingR32(false);
+  };
+
   const pendingGames = games.filter(g => !g.isComplete);
   const completedGames = games.filter(g => g.isComplete);
 
@@ -121,6 +165,12 @@ export default function AdminGamesPage() {
   const completedByDate = groupByDate(completedGames);
 
   function renderGameCard(game: any, isPending: boolean) {
+    const isSkeleton = game.isSkeletonGame === true;
+    // For skeleton games, resolve possible teams from projection model
+    const proj = isSkeleton ? projectionModel.get(game.id) : undefined;
+    const skeletonHomeTeams = proj ? proj.homeSide.possibleTeams : [];
+    const skeletonAwayTeams = proj ? proj.awaySide.possibleTeams : [];
+
     return (
       <div
         key={game.id}
@@ -132,10 +182,29 @@ export default function AdminGamesPage() {
         style={{ backgroundColor: isPending ? 'rgba(255,255,0,0.03)' : 'rgba(0,255,0,0.03)' }}
       >
         <div className="flex-1">
-          <div className="text-xs text-slate-500 uppercase tracking-widest mb-1">{game.region} — {game.round}</div>
-          <div className="font-bebas text-xl text-white">
-            #{game.homeSeed} {game.homeTeam} <span className="text-slate-500">vs</span> #{game.awaySeed} {game.awayTeam}
+          <div className="text-xs text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-2">
+            <span>{game.region} — {game.round}</span>
+            {isSkeleton && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-500 border border-slate-600/50">[Framework]</span>
+            )}
           </div>
+          {isSkeleton ? (
+            <div className="font-bebas text-lg text-slate-400">
+              {skeletonHomeTeams.length > 0
+                ? skeletonHomeTeams.map(t => `#${t.seed} ${t.name}`).join(' / ')
+                : 'TBD'
+              }
+              <span className="text-slate-600 mx-2">vs</span>
+              {skeletonAwayTeams.length > 0
+                ? skeletonAwayTeams.map(t => `#${t.seed} ${t.name}`).join(' / ')
+                : 'TBD'
+              }
+            </div>
+          ) : (
+            <div className="font-bebas text-xl text-white">
+              #{game.homeSeed} {game.homeTeam} <span className="text-slate-500">vs</span> #{game.awaySeed} {game.awayTeam}
+            </div>
+          )}
           {isPending ? (
             editingTime === game.id ? (
               <div className="flex gap-2 items-center mt-2">
@@ -183,8 +252,16 @@ export default function AdminGamesPage() {
               className="bg-slate-900 border border-slate-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-red-600"
             >
               <option value="">Select winner…</option>
-              <option value={game.homeTeam}>#{game.homeSeed} {game.homeTeam}</option>
-              <option value={game.awayTeam}>#{game.awaySeed} {game.awayTeam}</option>
+              {isSkeleton ? (
+                proj?.allPossibleTeams.map(t => (
+                  <option key={t.name} value={t.name}>#{t.seed} {t.name}</option>
+                ))
+              ) : (
+                <>
+                  <option value={game.homeTeam}>#{game.homeSeed} {game.homeTeam}</option>
+                  <option value={game.awayTeam}>#{game.awaySeed} {game.awayTeam}</option>
+                </>
+              )}
             </select>
             <button
               onClick={() => handleSetWinner(game.id)}
@@ -232,6 +309,26 @@ export default function AdminGamesPage() {
           </div>
         ) : (
           <>
+            {/* Create R32 Skeleton Games */}
+            <div className="mb-8 p-4 rounded-xl border border-slate-700/50 bg-slate-800/20">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-sm text-white font-semibold font-sans">Round of 32 Skeleton Games</p>
+                  <p className="text-xs text-slate-500 font-sans mt-0.5">
+                    Creates 16 placeholder Round of 32 game docs so you can set tip times via Manage Games.
+                  </p>
+                  <p className="text-[11px] text-green-500/70 font-sans mt-1">✓ This action is safe — it will never overwrite existing games.</p>
+                </div>
+                <button
+                  onClick={handleCreateR32Skeleton}
+                  disabled={creatingR32}
+                  className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {creatingR32 ? 'Creating…' : 'Create Round of 32 Skeleton Games'}
+                </button>
+              </div>
+            </div>
+
             {pendingGames.length > 0 && (
               <div className="mb-10">
                 <h2 className="font-bebas text-2xl text-yellow-400 mb-4 tracking-widest">Pending Games</h2>
