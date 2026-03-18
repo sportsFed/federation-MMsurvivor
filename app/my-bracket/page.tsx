@@ -5,6 +5,14 @@ import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import { calculateFinalFourScore, calculateNationalChampScore } from '@/lib/scoring';
+
+interface TeamData {
+  id: string;
+  name: string;
+  regionalSeed?: number;
+  nationalSeed?: number;
+}
 
 function getEasternGameDate(isoString: string): string {
   const d = new Date(isoString);
@@ -20,6 +28,7 @@ export default function MyBracketPage() {
   const router = useRouter();
   const [entry, setEntry] = useState<any>(null);
   const [games, setGames] = useState<any[]>([]);
+  const [teams, setTeams] = useState<TeamData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,6 +39,8 @@ export default function MyBracketPage() {
         if (docSnap.exists()) setEntry(docSnap.data());
         const gamesSnap = await getDocs(collection(db, 'games'));
         setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        const teamsSnap = await getDocs(collection(db, 'teams'));
+        setTeams(teamsSnap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<TeamData, 'id'>) })));
       } else {
         router.push('/login');
       }
@@ -112,16 +123,34 @@ export default function MyBracketPage() {
             <div className="space-y-4">
               <div className="border-b border-slate-700 pb-3">
                 <p className="text-slate-400 text-xs uppercase tracking-widest mb-1">National Champion 🏆</p>
-                <p className="font-bebas text-xl text-fedRed">{entry.finalFourPicks.champ || 'Not Selected'}</p>
+                {(() => {
+                  const champName = entry.finalFourPicks.champ;
+                  if (!champName) return <p className="font-bebas text-xl text-fedRed">Not Selected</p>;
+                  const champTeam = teams.find((t) => t.name === champName);
+                  const pts = champTeam?.nationalSeed ? calculateNationalChampScore(champTeam.nationalSeed) : null;
+                  return (
+                    <p className="font-bebas text-xl text-fedRed">
+                      {champName}
+                      {pts !== null && <span className="text-slate-400 text-base ml-1">(+{pts} pts)</span>}
+                    </p>
+                  );
+                })()}
               </div>
               <div>
                 <p className="text-slate-400 text-xs uppercase tracking-widest mb-2">Final Four</p>
                 <div className="space-y-1">
                   {[entry.finalFourPicks.f1, entry.finalFourPicks.f2, entry.finalFourPicks.f3, entry.finalFourPicks.f4]
                     .filter(Boolean)
-                    .map((team: string, i: number) => (
-                      <p key={i} className="font-bebas text-lg text-white">{team}</p>
-                    ))}
+                    .map((teamName: string, i: number) => {
+                      const teamData = teams.find((t) => t.name === teamName);
+                      const pts = teamData?.regionalSeed ? calculateFinalFourScore(teamData.regionalSeed) : null;
+                      return (
+                        <p key={i} className="font-bebas text-lg text-white">
+                          {teamName}
+                          {pts !== null && <span className="text-slate-400 text-base ml-1">(+{pts} pts)</span>}
+                        </p>
+                      );
+                    })}
                   {!entry.finalFourPicks.f1 && <p className="text-slate-500 italic text-sm">No Final Four picks yet.</p>}
                 </div>
               </div>

@@ -15,6 +15,14 @@ import {
   type GameProjection,
   type ProjectedTeam,
 } from '@/lib/bracket/framework';
+import { calculateFinalFourScore, calculateNationalChampScore } from '@/lib/scoring';
+
+interface TeamData {
+  id: string;
+  name: string;
+  regionalSeed?: number;
+  nationalSeed?: number;
+}
 
 function formatEasternTime(isoString: string): string {
   const d = new Date(isoString);
@@ -165,6 +173,7 @@ export default function MyPicksPage() {
   const [confirmProjectionPick, setConfirmProjectionPick] = useState<{ team: string; seed: number; frameworkGameId: string; round: string; region: string | null } | null>(null);
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
   const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
+  const [firestoreTeams, setFirestoreTeams] = useState<TeamData[]>([]);
 
   const showMessage = (msg: string, ms = 5000) => {
     setPickMessage(msg);
@@ -181,14 +190,16 @@ export default function MyPicksPage() {
       if (user) {
         setUserId(user.uid);
         try {
-          const [entrySnap, gamesSnap, entriesSnap] = await Promise.all([
+          const [entrySnap, gamesSnap, entriesSnap, teamsSnap] = await Promise.all([
             getDoc(doc(db, 'entries', user.uid)),
             getDocs(collection(db, 'games')),
             getDocs(collection(db, 'entries')),
+            getDocs(collection(db, 'teams')),
           ]);
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
           setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           setAllEntries(entriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setFirestoreTeams(teamsSnap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<TeamData, 'id'>) })));
           // Build projection model
           const fw = getFramework();
           const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
@@ -1106,16 +1117,34 @@ export default function MyPicksPage() {
             <div className="grid grid-cols-2 gap-2">
               {(['f1', 'f2', 'f3', 'f4'] as const).map((slot, i) => {
                 const regions = ['East', 'West', 'South', 'Midwest'];
+                const teamName = userEntry.finalFourPicks[slot];
+                const teamData = firestoreTeams.find((t) => t.name === teamName);
+                const pts = teamData?.regionalSeed ? calculateFinalFourScore(teamData.regionalSeed) : null;
                 return (
                   <div key={slot} className="bg-slate-800/30 rounded px-3 py-2 text-xs font-sans">
                     <span className="text-slate-500 block">{regions[i]} Final Four</span>
-                    <span className="text-white font-medium">{userEntry.finalFourPicks[slot] || '—'}</span>
+                    <span className="text-white font-medium">{teamName || '—'}</span>
+                    {teamName && pts !== null && (
+                      <span className="text-slate-400 ml-1">(+{pts} pts)</span>
+                    )}
                   </div>
                 );
               })}
               <div className="col-span-2 bg-slate-800/30 rounded px-3 py-2 text-xs font-sans border border-red-500/20">
                 <span className="text-slate-500 block">National Champion 🏆</span>
-                <span className="text-red-400 font-bold">{userEntry.finalFourPicks.champ || '—'}</span>
+                {(() => {
+                  const champName = userEntry.finalFourPicks.champ;
+                  const champTeam = firestoreTeams.find((t) => t.name === champName);
+                  const pts = champTeam?.nationalSeed ? calculateNationalChampScore(champTeam.nationalSeed) : null;
+                  return (
+                    <>
+                      <span className="text-red-400 font-bold">{champName || '—'}</span>
+                      {champName && pts !== null && (
+                        <span className="text-slate-400 ml-1">(+{pts} pts)</span>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
