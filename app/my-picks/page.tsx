@@ -51,6 +51,9 @@ function getEasternDateKey(isoString: string): string {
 }
 
 const ELITE_EIGHT_REQUIRED_PICKS = 2;
+const FINAL_FOUR_DEADLINE = new Date('2026-03-19T16:15:00Z');
+const SAT_ISO = '2026-03-22T12:00:00-04:00';
+const SUN_ISO = '2026-03-23T12:00:00-04:00';
 
 function formatCountdown(isoString: string, now: Date): string | null {
   const target = new Date(isoString);
@@ -444,8 +447,11 @@ export default function MyPicksPage() {
     return aTime - bTime;
   });
 
+  // Exclude skeleton R32 games — they are handled by the dedicated __sat__/__sun__ tabs
+  const nonSkeletonGames = sortedGames.filter((g: any) => !g.isSkeletonGame);
+
   // Group by calendar date (in Eastern Time)
-  const gamesByDay = sortedGames.reduce((acc: Record<string, any[]>, game) => {
+  const gamesByDay = nonSkeletonGames.reduce((acc: Record<string, any[]>, game) => {
     const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
     const dateKey = gameTime ? getEasternDateKey(gameTime) : 'Unknown';
     if (!acc[dateKey]) acc[dateKey] = [];
@@ -456,7 +462,7 @@ export default function MyPicksPage() {
   // Pending picks (not yet scored), sorted chronologically by game time
   const gamesById = new Map(games.map((g: any) => [g.id, g]));
   const pendingPicks = (userEntry?.survivorPicks ?? [])
-    .filter((p: any) => p.result !== 'win' && p.result !== 'loss')
+    .filter((p: any) => p.result !== 'win' && p.result !== 'loss' && !p.isProjectionPick)
     .sort((a: any, b: any) => {
       const gameA = gamesById.get(a.gameId);
       const gameB = gamesById.get(b.gameId);
@@ -464,6 +470,25 @@ export default function MyPicksPage() {
       const tB = new Date(gameB?.gameTime ?? gameB?.tipoff ?? gameB?.scheduledAt ?? 0).getTime();
       return tA - tB;
     });
+
+  // Projection picks that are not yet scored, for top-of-page banners
+  const pendingProjectionPicks = (userEntry?.survivorPicks ?? [])
+    .filter((p: any) => p.isProjectionPick === true && p.result !== 'win' && p.result !== 'loss');
+
+  // Merge regular pending picks + projection picks, sorted chronologically
+  const SAT_EPOCH = new Date(SAT_ISO).getTime();
+  const SUN_EPOCH = new Date(SUN_ISO).getTime();
+  const allPendingPicksSorted = [
+    ...pendingPicks.map((p: any) => {
+      const g = gamesById.get(p.gameId);
+      const t = new Date(g?.gameTime ?? g?.tipoff ?? g?.scheduledAt ?? 0).getTime();
+      return { ...p, _sortEpoch: t };
+    }),
+    ...pendingProjectionPicks.map((p: any) => {
+      const epoch = p.dateKey === '__sat__' ? SAT_EPOCH : p.dateKey === '__sun__' ? SUN_EPOCH : SAT_EPOCH;
+      return { ...p, _sortEpoch: epoch };
+    }),
+  ].sort((a: any, b: any) => a._sortEpoch - b._sortEpoch);
 
   // Elite Eight picks (all, including scored and pending)
   const eliteEightPicks = (userEntry?.survivorPicks ?? []).filter(
@@ -476,7 +501,7 @@ export default function MyPicksPage() {
     label: string;
     isEliteEight: boolean;
     hasUnlockedGames: boolean;
-    pickStatus: 'has-pick' | 'missing-pick' | 'complete'; // complete = all games done
+    pickStatus: 'has-pick' | 'missing-pick' | 'complete' | 'voided-pick'; // voided-pick = pick on eliminated team
   }
 
   const dayTabs: DayTab[] = Object.entries(gamesByDay).map(([dateKey, dayGames]) => {
@@ -505,26 +530,37 @@ export default function MyPicksPage() {
   });
 
   // Add Saturday, Sunday, Projections tabs (always shown after Firestore tabs)
-  const satProjectionPick = (userEntry?.survivorPicks ?? []).some(
-    (p: any) => p.isProjectionPick && p.dateKey === '__sat__'
+  const satProjectionPick = (userEntry?.survivorPicks ?? []).find(
+    (p: any) => p.isProjectionPick && p.dateKey === '__sat__' && !p.result
   );
-  const sunProjectionPick = (userEntry?.survivorPicks ?? []).some(
-    (p: any) => p.isProjectionPick && p.dateKey === '__sun__'
+  const sunProjectionPick = (userEntry?.survivorPicks ?? []).find(
+    (p: any) => p.isProjectionPick && p.dateKey === '__sun__' && !p.result
   );
+
+  // Detect voided sat/sun picks (team no longer in allPossibleTeams for that game)
+  const satPickVoided = satProjectionPick ? (() => {
+    const proj = projectionModel.get(satProjectionPick.gameId);
+    return proj !== undefined && !proj.allPossibleTeams.some((t: any) => t.name === satProjectionPick.team);
+  })() : false;
+  const sunPickVoided = sunProjectionPick ? (() => {
+    const proj = projectionModel.get(sunProjectionPick.gameId);
+    return proj !== undefined && !proj.allPossibleTeams.some((t: any) => t.name === sunProjectionPick.team);
+  })() : false;
+
   const extraTabs: DayTab[] = [
     {
       dateKey: '__sat__',
-      label: 'Sat',
+      label: formatEasternTabLabel(SAT_ISO),
       isEliteEight: false,
       hasUnlockedGames: true,
-      pickStatus: satProjectionPick ? 'has-pick' : 'missing-pick',
+      pickStatus: satPickVoided ? 'voided-pick' : satProjectionPick ? 'has-pick' : 'missing-pick',
     },
     {
       dateKey: '__sun__',
-      label: 'Sun',
+      label: formatEasternTabLabel(SUN_ISO),
       isEliteEight: false,
       hasUnlockedGames: true,
-      pickStatus: sunProjectionPick ? 'has-pick' : 'missing-pick',
+      pickStatus: sunPickVoided ? 'voided-pick' : sunProjectionPick ? 'has-pick' : 'missing-pick',
     },
     {
       dateKey: '__proj__',
@@ -550,7 +586,7 @@ export default function MyPicksPage() {
   );
 
   // Elite Eight alert: need 2 total picks across Sat/Sun window
-  const upcomingEliteEightGames = sortedGames.filter((g: any) => {
+  const upcomingEliteEightGames = nonSkeletonGames.filter((g: any) => {
     const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt;
     return g.round === 'Elite Eight' && gt && now < new Date(gt);
   });
@@ -599,12 +635,24 @@ export default function MyPicksPage() {
       )}
 
       {/* Pre-Tournament Picks incomplete alert */}
-      {userEntry && hasIncompleteFinalFourPicks(userEntry) && (
-        <div className="mb-4 p-3 rounded-lg bg-amber-900/20 border border-amber-600/40 text-amber-300 text-sm font-sans flex items-center justify-between">
-          <span>⚠️ Pre-Tournament Picks not complete</span>
-          <a href="/final-four" className="text-red-400 underline hover:text-red-300 text-xs font-semibold">Complete Now →</a>
-        </div>
-      )}
+      {userEntry && hasIncompleteFinalFourPicks(userEntry) && (() => {
+        const isDeadlinePassed = now >= FINAL_FOUR_DEADLINE;
+        const countdown = formatCountdown(FINAL_FOUR_DEADLINE.toISOString(), now);
+        if (!isDeadlinePassed && countdown) {
+          return (
+            <div className="mb-4 p-3 rounded-lg bg-red-900/30 border border-red-500/50 text-red-300 text-sm font-sans flex items-center justify-between gap-2">
+              <span className="font-semibold">❗ F4 + Natty Picks due ASAP &nbsp;<span className="font-mono text-xs text-amber-400">⏱ {countdown}</span></span>
+              <a href="/final-four" className="text-red-400 underline hover:text-red-300 text-xs font-semibold whitespace-nowrap">Complete Now →</a>
+            </div>
+          );
+        }
+        return (
+          <div className="mb-4 p-3 rounded-lg bg-amber-900/20 border border-amber-600/40 text-amber-300 text-sm font-sans flex items-center justify-between">
+            <span>⚠️ Pre-Tournament Picks not complete</span>
+            <a href="/final-four" className="text-red-400 underline hover:text-red-300 text-xs font-semibold">Complete Now →</a>
+          </div>
+        );
+      })()}
 
       {/* Missing pick alerts for upcoming days — clicking switches to that tab */}
       {missingPickDayAlerts.map(({ dateKey, label }) => (
@@ -638,17 +686,24 @@ export default function MyPicksPage() {
       })()}
 
       {/* Current Pick Status — one banner per pending pick */}
-      {pendingPicks.length > 0 && (
+      {allPendingPicksSorted.length > 0 && (
         <div className="mb-4 space-y-1">
-          {pendingPicks.map((pick: any, i: number) => {
-            const pickGame = games.find((g: any) => g.id === pick.gameId);
-            const gt = pickGame?.gameTime ?? pickGame?.tipoff ?? pickGame?.scheduledAt ?? '';
-            const dayLabel = gt ? getEasternGameDate(gt) : pick.round;
+          {allPendingPicksSorted.map((pick: any, i: number) => {
+            let dayLabel: string;
+            if (pick.isProjectionPick) {
+              dayLabel = pick.dateKey === '__sat__' ? formatEasternTabLabel(SAT_ISO) : formatEasternTabLabel(SUN_ISO);
+            } else {
+              const pickGame = games.find((g: any) => g.id === pick.gameId);
+              const gt = pickGame?.gameTime ?? pickGame?.tipoff ?? pickGame?.scheduledAt ?? '';
+              dayLabel = gt ? getEasternGameDate(gt) : pick.round;
+            }
             return (
               <div key={i} className="p-3 rounded-lg bg-slate-800/50 border border-slate-700 text-sm font-sans flex items-center gap-2">
                 <span className="text-green-400">✅</span>
                 <span className="text-slate-300">{dayLabel}: <strong className="text-white">{pick.team}</strong></span>
-                <span className="text-slate-500 text-xs ml-auto">Change before tip-off</span>
+                <span className="text-slate-500 text-xs ml-auto">
+                  {pick.isProjectionPick ? 'Conditional pick' : 'Change before tip-off'}
+                </span>
               </div>
             );
           })}
@@ -719,6 +774,7 @@ export default function MyPicksPage() {
                       {!allComplete && (
                         <span
                           className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#0b1120] ${
+                            tab.pickStatus === 'voided-pick' ? 'bg-red-500' :
                             tab.pickStatus === 'has-pick' ? 'bg-green-400' : 'bg-amber-400'
                           }`}
                         />
@@ -737,7 +793,7 @@ export default function MyPicksPage() {
             return (
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-3">
-                  Round of 32 — {effectiveActiveTab === '__sat__' ? 'Saturday, March 22' : 'Sunday, March 23'}
+                  Round of 32 — {effectiveActiveTab === '__sat__' ? getEasternGameDate(SAT_ISO) : getEasternGameDate(SUN_ISO)}
                 </p>
                 {r32Games.map(game => {
                   const proj = projectionModel.get(game.id);
@@ -1005,14 +1061,34 @@ export default function MyPicksPage() {
               ).map((pick: any, i: number) => {
                 const pickGame = games.find((g: any) => g.id === pick.gameId);
                 const gt = pickGame?.gameTime ?? pickGame?.tipoff ?? pickGame?.scheduledAt ?? '';
-                const dayLabel = gt ? getEasternGameDate(gt) : (pick.dateKey ?? pick.round);
+                let dayLabel: string;
+                if (gt) {
+                  dayLabel = getEasternGameDate(gt);
+                } else if (pick.dateKey === '__sat__') {
+                  dayLabel = getEasternGameDate(SAT_ISO);
+                } else if (pick.dateKey === '__sun__') {
+                  dayLabel = getEasternGameDate(SUN_ISO);
+                } else {
+                  dayLabel = pick.dateKey ?? pick.round;
+                }
+
+                // Check if this projection pick's team has been eliminated
+                const isPickVoided = pick.isProjectionPick && !pick.result && (() => {
+                  const fwGame = getFramework().games.find((g: any) => g.id === pick.gameId);
+                  const proj = fwGame ? projectionModel.get(fwGame.id) : undefined;
+                  return proj !== undefined && !proj.allPossibleTeams.some((t: any) => t.name === pick.team);
+                })();
+
                 return (
                   <div key={i} className="flex items-center justify-between bg-slate-800/30 rounded px-3 py-1.5 text-sm font-sans">
                     <div className="flex flex-col">
                       <span className="text-slate-400 text-xs">{pick.round} · {pick.region}</span>
                       <span className="text-slate-500 text-[10px]">{dayLabel}</span>
                     </div>
-                    <span className="text-white font-medium">{pick.team}</span>
+                    <span className={`font-medium ${isPickVoided ? 'text-red-400' : 'text-white'}`}>
+                      {isPickVoided ? '⚠️ ' : ''}{pick.team}
+                      {isPickVoided && <span className="ml-1 text-[10px] text-red-500 font-normal">Team eliminated</span>}
+                    </span>
                     <span>
                       {pick.result === 'win' ? '✅' : pick.result === 'loss' ? '❌' : <span className="text-slate-600 text-xs">Pending</span>}
                     </span>
