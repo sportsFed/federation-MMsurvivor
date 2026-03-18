@@ -257,8 +257,14 @@ export default function MyPicksPage() {
     .filter((p: any) => p.isProjectionPick === true && p.result !== 'win' && p.result !== 'loss')
     .map((p: any) => p.team);
 
-  // alreadyPickedTeams: used for "can't reuse" check — includes scored picks AND pending projection picks
-  const alreadyPickedTeams: string[] = [...new Set([...scoredPickedTeams, ...pendingProjectionPickTeams])];
+  // alreadyPickedTeams: used for "can't reuse" check — includes ALL picks across all rounds
+  const alreadyPickedTeams: string[] = Array.from(
+    new Set(
+      ((userEntry?.survivorPicks ?? []) as any[])
+        .map((p: any) => p.team as string)
+        .filter((t: string) => Boolean(t))
+    )
+  );
 
   // Helper: derive effective dateKey for a pick (backward compat for picks without dateKey)
   const getEffectivePickDateKey = (pick: any): string | null => {
@@ -1027,7 +1033,8 @@ export default function MyPicksPage() {
                         ].map(({ team, seed }) => {
                           const isThisRoundPick = thisGamePickTeam === team;
                           const isUsedInPrevRound = alreadyPickedTeams.includes(team);
-                          const canPick = !isLocked && !game.isComplete && !isUsedInPrevRound;
+                          const isTeamEliminated = firestoreTeams.some((t: any) => t.name === team && t.isEliminated);
+                          const canPick = !isLocked && !game.isComplete && !isUsedInPrevRound && !isTeamEliminated;
                           return (
                             <button
                               key={team}
@@ -1038,16 +1045,19 @@ export default function MyPicksPage() {
                                   ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-pointer hover:bg-green-700/60'
                                   : isUsedInPrevRound
                                   ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
+                                  : isTeamEliminated
+                                  ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
                                   : isLocked || game.isComplete
                                   ? 'bg-slate-800/60 border border-slate-700/40 text-slate-500 cursor-default'
                                   : 'bg-slate-700/60 hover:bg-red-700/50 hover:border-red-500/50 border border-slate-600 text-white cursor-pointer'
                               }`}
                             >
                               <span className="text-[10px] text-slate-500 block mb-0.5">#{seed}</span>
-                              <span className="block leading-tight text-xs">{team}</span>
+                              <span className={`block leading-tight text-xs${isTeamEliminated ? ' line-through' : ''}`}>{team}</span>
                               {isThisRoundPick && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
                               {isUsedInPrevRound && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
-                              {isLocked && !isThisRoundPick && !isUsedInPrevRound && (
+                              {isTeamEliminated && !isUsedInPrevRound && <span className="text-[10px] text-red-700 mt-0.5 block">Eliminated</span>}
+                              {isLocked && !isThisRoundPick && !isUsedInPrevRound && !isTeamEliminated && (
                                 <span className="text-[10px] text-slate-600 mt-0.5 block">Locked</span>
                               )}
                             </button>

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase/adminApp';
-import { calculateSurvivorScore, calculateConsolationScore } from '@/lib/scoring';
+import { scoreCompletedGame } from '@/lib/scoreGame';
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -39,10 +39,13 @@ export async function GET(request: Request) {
 
       const round: string = fsGame.round ?? 'Round of 64';
 
-      // Find winner seed for scoring
+      // Find winner and loser seeds for scoring
       const winnerSeed: number =
         fsGame.homeTeam === winnerName ? fsGame.homeSeed : fsGame.awaySeed;
-      const points = calculateSurvivorScore(winnerSeed, round);
+      const loserName: string =
+        fsGame.homeTeam === winnerName ? fsGame.awayTeam : fsGame.homeTeam;
+      const loserSeed: number =
+        fsGame.homeTeam === winnerName ? fsGame.awaySeed : fsGame.homeSeed;
 
       // Mark game complete
       await db.collection('games').doc(fsGame.id).update({
@@ -50,44 +53,8 @@ export async function GET(request: Request) {
         isComplete: true,
       });
 
-      // Score entries
-      const entriesSnap = await db.collection('entries').where('isEliminated', '==', false).get();
-      const batch = db.batch();
-
-      for (const entryDoc of entriesSnap.docs) {
-        const entry = entryDoc.data() as any;
-        const survivorPicks: any[] = entry.survivorPicks ?? [];
-
-        // Find the pick for this game
-        const pickIndex = survivorPicks.findIndex((p: any) => p.gameId === fsGame.id);
-        if (pickIndex === -1) continue; // Entry didn't pick in this game
-
-        const pickedTeam = survivorPicks[pickIndex].team;
-        const isWinner = pickedTeam === winnerName;
-
-        // Get picked team's seed for consolation scoring
-        const pickedSeed: number = fsGame.homeTeam === pickedTeam ? fsGame.homeSeed : fsGame.awaySeed;
-        const consolationPoints = calculateConsolationScore(pickedSeed);
-
-        // Update survivorPicks result
-        const updatedPicks = [...survivorPicks];
-        updatedPicks[pickIndex] = { ...updatedPicks[pickIndex], result: isWinner ? 'win' : 'loss' };
-
-        if (isWinner) {
-          batch.update(entryDoc.ref, {
-            survivorPicks: updatedPicks,
-            totalPoints: (entry.totalPoints ?? 0) + points,
-          });
-        } else {
-          batch.update(entryDoc.ref, {
-            survivorPicks: updatedPicks,
-            isEliminated: true,
-            totalPoints: (entry.totalPoints ?? 0) + consolationPoints,
-          });
-        }
-      }
-
-      await batch.commit();
+      // Score entries and mark losing team as eliminated
+      await scoreCompletedGame(fsGame.id, winnerName, loserName, round, winnerSeed, loserSeed);
       processed++;
     }
 
