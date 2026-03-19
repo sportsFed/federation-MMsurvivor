@@ -197,6 +197,7 @@ export default function MyPicksPage() {
   const [now, setNow] = useState(() => new Date());
   const [confirmPick, setConfirmPick] = useState<{ team: string; seed: number; game: any } | null>(null);
   const [confirmProjectionPick, setConfirmProjectionPick] = useState<{ team: string; seed: number; frameworkGameId: string; round: string; region: string | null } | null>(null);
+  const [confirmVoidPick, setConfirmVoidPick] = useState<{ pick: any; dayLabel: string } | null>(null);
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
   const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
   const [firestoreTeams, setFirestoreTeams] = useState<TeamData[]>([]);
@@ -491,6 +492,28 @@ export default function MyPicksPage() {
     } catch (err: any) {
       showMessage(`Error: ${err.message}`);
     }
+  };
+
+  const handleVoidPick = async (pick: any) => {
+    if (!auth.currentUser) { showMessage('Session expired.'); return; }
+    const idToken = await getIdToken(auth.currentUser);
+    const res = await fetch('/api/picks/void', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+      body: JSON.stringify({ dateKey: pick.dateKey, isProjectionPick: pick.isProjectionPick ?? false }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      showMessage(data.error ?? 'Failed to void pick.', 5000);
+      return;
+    }
+    setUserEntry((prev: any) => ({
+      ...prev,
+      survivorPicks: (prev.survivorPicks ?? []).filter(
+        (p: any) => !(p.dateKey === pick.dateKey && (p.isProjectionPick ?? false) === (pick.isProjectionPick ?? false))
+      ),
+    }));
+    showMessage('Pick removed.');
   };
 
   // Sort games chronologically
@@ -788,6 +811,23 @@ export default function MyPicksPage() {
                 <span className="text-slate-500 text-xs ml-auto">
                   {pick.isProjectionPick ? 'Conditional pick' : 'Change before tip-off'}
                 </span>
+                {(() => {
+                  const pickGame = games.find((g: any) => g.id === pick.gameId);
+                  const pickGameTime = pickGame?.gameTime ?? pickGame?.tipoff ?? pickGame?.scheduledAt ?? null;
+                  const effectivePickTime = pickGameTime
+                    ?? (pick.dateKey === '__sat__' ? SAT_ISO : pick.dateKey === '__sun__' ? SUN_ISO : null);
+                  const isPickLocked = effectivePickTime ? now >= new Date(effectivePickTime) : false;
+                  return !isPickLocked ? (
+                    <button
+                      onClick={() => setConfirmVoidPick({ pick, dayLabel })}
+                      className="ml-1 text-slate-600 hover:text-red-400 transition text-base leading-none font-bold"
+                      title="Remove pick"
+                      aria-label="Remove pick"
+                    >
+                      ✕
+                    </button>
+                  ) : null;
+                })()}
               </div>
             );
           })}
@@ -1323,6 +1363,40 @@ export default function MyPicksPage() {
                 className="flex-1 py-2.5 rounded-xl bg-fedRed hover:bg-red-700 text-white font-sans text-sm font-semibold transition"
               >
                 Confirm Pick
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Void Pick Confirmation Modal */}
+      {confirmVoidPick && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl">
+            <div className="text-4xl mb-3">🗑️</div>
+            <h3 className="font-bebas text-2xl text-white tracking-widest mb-1">Remove Pick?</h3>
+            <p className="text-slate-400 text-sm mb-4 font-sans">
+              {confirmVoidPick.dayLabel}: <strong className="text-white">{confirmVoidPick.pick.team}</strong>
+            </p>
+            <p className="text-xs text-slate-500 font-sans mb-5">
+              This will clear your pick for this date. You can re-pick any available team before tip-off.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmVoidPick(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 font-sans text-sm transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const { pick } = confirmVoidPick;
+                  setConfirmVoidPick(null);
+                  await handleVoidPick(pick);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-red-700 hover:bg-red-600 text-white font-sans text-sm font-semibold transition"
+              >
+                Remove Pick
               </button>
             </div>
           </div>
