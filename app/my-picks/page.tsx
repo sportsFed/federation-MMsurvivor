@@ -10,7 +10,6 @@ import {
   buildFirestoreGamesBracketKeyMap,
   buildProjectionModel,
   listFrameworkGamesByDay,
-  listFrameworkGamesByRound,
   getFramework,
   deriveDayFromGameTime,
   type FrameworkGame,
@@ -18,13 +17,6 @@ import {
   type ProjectedTeam,
 } from '@/lib/bracket/framework';
 import { calculateFinalFourScore, calculateNationalChampScore } from '@/lib/scoring';
-
-interface TeamData {
-  id: string;
-  name: string;
-  regionalSeed?: number;
-  nationalSeed?: number;
-}
 
 function formatEasternTime(isoString: string): string {
   const d = new Date(isoString);
@@ -179,13 +171,13 @@ export default function MyPicksPage() {
   const [userEntry, setUserEntry] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pickMessage, setPickMessage] = useState('');
   const [now, setNow] = useState(() => new Date());
   const [confirmPick, setConfirmPick] = useState<{ team: string; seed: number; game: any } | null>(null);
   const [confirmProjectionPick, setConfirmProjectionPick] = useState<{ team: string; seed: number; frameworkGameId: string; round: string; region: string | null } | null>(null);
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
   const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
-  const [firestoreTeams, setFirestoreTeams] = useState<TeamData[]>([]);
 
   const showMessage = (msg: string, ms = 5000) => {
     setPickMessage(msg);
@@ -223,7 +215,7 @@ export default function MyPicksPage() {
             // projection picks are stored within survivorPicks (isProjectionPick: true) — already loaded via setUserEntry above
           }
         } catch (err: any) {
-          showMessage(`Error loading data: ${err.message}`);
+          setLoadError(`Failed to load picks data: ${err.message ?? 'Unknown error'}`);
         }
       } else {
         router.push('/login');
@@ -282,11 +274,14 @@ export default function MyPicksPage() {
       showMessage('This game has already started — pick is locked.');
       return;
     }
-    if (alreadyPickedTeams.includes(team)) {
+    // Check if team was used in a DIFFERENT game (bidirectional enforcement)
+    const usedInDifferentGame = (userEntry?.survivorPicks ?? []).some(
+      (p: any) => p.team === team && p.gameId !== game.id
+    );
+    if (usedInDifferentGame) {
       showMessage(`You already used ${team} in a previous round.`, 4000);
       return;
     }
-
     const gameDateKey = getEasternDateKey(game.gameTime ?? game.tipoff ?? game.scheduledAt ?? new Date().toISOString());
     const isEliteEightGame = game.round === 'Elite Eight';
 
@@ -390,13 +385,17 @@ export default function MyPicksPage() {
       showMessage('This game has already started — pick is locked.');
       return;
     }
-    if (alreadyPickedTeams.includes(team)) {
+    // Check if team was used in a DIFFERENT game (bidirectional enforcement)
+    const usedInDifferentGame = (userEntry?.survivorPicks ?? []).some(
+      (p: any) => p.team === team && p.gameId !== frameworkGameId
+    );
+    if (usedInDifferentGame) {
       showMessage(`You already used ${team} in a pick.`, 4000);
       return;
     }
 
-    const fwGame = getFramework().games.find(g => g.id === frameworkGameId);
-    const day = fwGame?.day ?? 'tbd';
+    // Use Firestore skeleton game's day field (not the framework) for dateKey
+    const day = skeletonGame?.day ?? 'tbd';
     const dateKey = day === 'saturday' ? '__sat__' : day === 'sunday' ? '__sun__' : '__proj__';
 
     try {
@@ -598,17 +597,30 @@ export default function MyPicksPage() {
     return dayDocs.some(doc => !doc.gameTime || now < new Date(doc.gameTime));
   };
 
+  // Compute representative game times for Sat/Sun tabs from Firestore skeleton games.
+  // Fall back to the SAT_ISO/SUN_ISO constants if no skeleton docs exist yet.
+  const satSkeletonGames = games.filter((g: any) =>
+    g.isSkeletonGame && g.round === 'Round of 32' &&
+    (g.day === 'saturday' || (g.day === 'tbd' && g.gameTime && deriveDayFromGameTime(g.gameTime) === 'saturday'))
+  );
+  const sunSkeletonGames = games.filter((g: any) =>
+    g.isSkeletonGame && g.round === 'Round of 32' &&
+    (g.day === 'sunday' || (g.day === 'tbd' && g.gameTime && deriveDayFromGameTime(g.gameTime) === 'sunday'))
+  );
+  const satRepresentativeTime = satSkeletonGames.find((g: any) => g.gameTime)?.gameTime ?? SAT_ISO;
+  const sunRepresentativeTime = sunSkeletonGames.find((g: any) => g.gameTime)?.gameTime ?? SUN_ISO;
+
   const extraTabs: DayTab[] = [
     {
       dateKey: '__sat__',
-      label: formatEasternTabLabel(SAT_ISO),
+      label: formatEasternTabLabel(satRepresentativeTime),
       isEliteEight: false,
       hasUnlockedGames: skeletonHasUnlockedForDay('saturday'),
       pickStatus: satPickVoided ? 'voided-pick' : satProjectionPick ? 'has-pick' : 'missing-pick',
     },
     {
       dateKey: '__sun__',
-      label: formatEasternTabLabel(SUN_ISO),
+      label: formatEasternTabLabel(sunRepresentativeTime),
       isEliteEight: false,
       hasUnlockedGames: skeletonHasUnlockedForDay('sunday'),
       pickStatus: sunPickVoided ? 'voided-pick' : sunProjectionPick ? 'has-pick' : 'missing-pick',
@@ -642,6 +654,22 @@ export default function MyPicksPage() {
     return g.round === 'Elite Eight' && gt && now < new Date(gt);
   });
   const showEliteEightAlert = upcomingEliteEightGames.length > 0 && eliteEightPicks.length < ELITE_EIGHT_REQUIRED_PICKS;
+
+  if (loadError) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 pb-20 pt-10 text-center">
+        <div className="text-5xl mb-4">⚠️</div>
+        <h3 className="font-bebas text-2xl text-white tracking-widest mb-2">Couldn&apos;t Load Your Picks</h3>
+        <p className="text-slate-400 text-sm font-sans mb-4">{loadError}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 rounded-lg bg-fedRed hover:bg-red-700 text-white font-sans text-sm font-semibold transition"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -840,25 +868,28 @@ export default function MyPicksPage() {
           {/* Saturday / Sunday Projection Pick tabs */}
           {(effectiveActiveTab === '__sat__' || effectiveActiveTab === '__sun__') && (() => {
             const dayKey = effectiveActiveTab === '__sat__' ? 'saturday' : 'sunday';
-            // Filter R32 framework games by the day stored on their Firestore skeleton docs.
-            // The framework JSON stores all R32 games with day "tbd"; the actual saturday/sunday
-            // assignment is set when the admin runs create-r32-skeleton and is stored in Firestore.
-            // Fallback: if day is "tbd" but gameTime is set, derive the day from gameTime.
-            const r32Games = listFrameworkGamesByRound('Round of 32').filter(game => {
-              const skDoc = skeletonByBracketKey.get(game.id);
-              if (!skDoc) return false;
-              if (skDoc.day === dayKey) return true;
-              if (skDoc.day === 'tbd' && skDoc.gameTime) {
-                return deriveDayFromGameTime(skDoc.gameTime) === dayKey;
-              }
-              return false;
-            });
+            // Build the R32 game list directly from Firestore skeleton game documents.
+            // The Firestore doc's `day` field is authoritative (set by the admin's create-r32-skeleton API).
+            // The doc ID equals the framework bracket key (e.g. "E-R32-G1"), so we use it as the
+            // join key for projectionModel.get(skGame.id).
+            const r32SkeletonGames = games
+              .filter((g: any) =>
+                g.isSkeletonGame &&
+                g.round === 'Round of 32' &&
+                (g.day === dayKey || (g.day === 'tbd' && g.gameTime && deriveDayFromGameTime(g.gameTime) === dayKey))
+              )
+              .sort((a: any, b: any) => {
+                const tA = a.gameTime ? new Date(a.gameTime).getTime() : 0;
+                const tB = b.gameTime ? new Date(b.gameTime).getTime() : 0;
+                return tA - tB;
+              });
+            const representativeTime = effectiveActiveTab === '__sat__' ? satRepresentativeTime : sunRepresentativeTime;
             return (
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-3">
-                  Round of 32 — {effectiveActiveTab === '__sat__' ? getEasternGameDate(SAT_ISO) : getEasternGameDate(SUN_ISO)}
+                  Round of 32 — {getEasternGameDate(representativeTime)}
                 </p>
-                {r32Games.length === 0 ? (
+                {r32SkeletonGames.length === 0 ? (
                   <p className="text-sm text-slate-400 text-center py-6">
                     Round of 32 games will appear here once the schedule is set. Check back after Round of 64 games are complete.
                   </p>
@@ -895,8 +926,8 @@ export default function MyPicksPage() {
                     )?.team ?? null;
                     return (
                       <ProjectionPickCard
-                        key={game.id}
-                        frameworkGame={game}
+                        key={skGame.id}
+                        frameworkGame={skGame as unknown as FrameworkGame}
                         projection={proj}
                         userProjectionPick={userPick}
                         allUsedTeams={alreadyPickedTeams}
@@ -1080,9 +1111,11 @@ export default function MyPicksPage() {
                           { team: game.awayTeam, seed: game.awaySeed },
                         ].map(({ team, seed }) => {
                           const isThisRoundPick = thisGamePickTeam === team;
-                          const isUsedInPrevRound = alreadyPickedTeams.includes(team);
-                          const isTeamEliminated = firestoreTeams.some((t: any) => t.name === team && t.isEliminated);
-                          const canPick = !isLocked && !game.isComplete && !isUsedInPrevRound && !isTeamEliminated;
+                          // Exclude the current pick for this game from "used" so "Your Pick" takes
+                          // precedence and the user can still interact with their own pick button.
+                          // This enforces bidirectional team reuse (past AND future picks count).
+                          const isUsedElsewhere = !isThisRoundPick && alreadyPickedTeams.includes(team);
+                          const canPick = !isLocked && !game.isComplete && !isUsedElsewhere;
                           return (
                             <button
                               key={team}
@@ -1091,9 +1124,7 @@ export default function MyPicksPage() {
                               className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left ${
                                 isThisRoundPick
                                   ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-pointer hover:bg-green-700/60'
-                                  : isUsedInPrevRound
-                                  ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
-                                  : isTeamEliminated
+                                  : isUsedElsewhere
                                   ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
                                   : isLocked || game.isComplete
                                   ? 'bg-slate-800/60 border border-slate-700/40 text-slate-500 cursor-default'
@@ -1101,11 +1132,10 @@ export default function MyPicksPage() {
                               }`}
                             >
                               <span className="text-[10px] text-slate-500 block mb-0.5">#{seed}</span>
-                              <span className={`block leading-tight text-xs${isTeamEliminated ? ' line-through' : ''}`}>{team}</span>
+                              <span className="block leading-tight text-xs">{team}</span>
                               {isThisRoundPick && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
-                              {isUsedInPrevRound && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
-                              {isTeamEliminated && !isUsedInPrevRound && <span className="text-[10px] text-red-700 mt-0.5 block">Eliminated</span>}
-                              {isLocked && !isThisRoundPick && !isUsedInPrevRound && !isTeamEliminated && (
+                              {isUsedElsewhere && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
+                              {isLocked && !isThisRoundPick && !isUsedElsewhere && (
                                 <span className="text-[10px] text-slate-600 mt-0.5 block">Locked</span>
                               )}
                             </button>
@@ -1181,8 +1211,9 @@ export default function MyPicksPage() {
               {(['f1', 'f2', 'f3', 'f4'] as const).map((slot, i) => {
                 const regions = ['East', 'West', 'South', 'Midwest'];
                 const teamName = userEntry.finalFourPicks[slot];
-                const teamData = firestoreTeams.find((t) => t.name === teamName);
-                const pts = teamData?.regionalSeed ? calculateFinalFourScore(teamData.regionalSeed) : null;
+                // Derive seed from framework teams (no Firestore read needed)
+                const fwTeam = getFramework().teams.find((t) => t.name === teamName);
+                const pts = fwTeam?.seed ? calculateFinalFourScore(fwTeam.seed) : null;
                 return (
                   <div key={slot} className="bg-slate-800/30 rounded px-3 py-2 text-xs font-sans">
                     <span className="text-slate-500 block">{regions[i]} Final Four</span>
@@ -1197,8 +1228,9 @@ export default function MyPicksPage() {
                 <span className="text-slate-500 block">National Champion 🏆</span>
                 {(() => {
                   const champName = userEntry.finalFourPicks.champ;
-                  const champTeam = firestoreTeams.find((t) => t.name === champName);
-                  const pts = champTeam?.nationalSeed ? calculateNationalChampScore(champTeam.nationalSeed) : null;
+                  const fwChamp = getFramework().teams.find((t) => t.name === champName);
+                  // Use regional seed as proxy for national seed (framework does not store national seed)
+                  const pts = fwChamp?.seed ? calculateNationalChampScore(fwChamp.seed) : null;
                   return (
                     <>
                       <span className="text-red-400 font-bold">{champName || '—'}</span>
