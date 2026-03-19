@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/firebase/adminApp';
 import { validateAdminSession } from '@/lib/adminAuth';
+import { deriveDayFromGameTime } from '@/lib/bracket/framework';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +13,8 @@ export async function POST(request: NextRequest) {
     if (!gameId || !gameTime) {
       return NextResponse.json({ error: 'Missing gameId or gameTime' }, { status: 400 });
     }
-    await db.collection('games').doc(gameId).update({ gameTime });
+    const day = deriveDayFromGameTime(gameTime);
+    await db.collection('games').doc(gameId).update({ gameTime, day });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

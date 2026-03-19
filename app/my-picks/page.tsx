@@ -12,6 +12,7 @@ import {
   listFrameworkGamesByDay,
   listFrameworkGamesByRound,
   getFramework,
+  deriveDayFromGameTime,
   type FrameworkGame,
   type GameProjection,
   type ProjectedTeam,
@@ -596,19 +597,37 @@ export default function MyPicksPage() {
     return proj !== undefined && !proj.allPossibleTeams.some((t: any) => t.name === sunProjectionPick.team);
   })() : false;
 
+  // Helper: determine whether the Sat/Sun tab should be shown as having unlocked games.
+  // De-duplicates the map values (each doc can be keyed twice) using a Set, then filters
+  // to docs that belong to the given day, and returns true if any game hasn't tipped yet.
+  // When no skeleton docs exist for that day yet, returns true so the tab still renders
+  // with an informative placeholder rather than being hidden entirely.
+  const skeletonHasUnlockedForDay = (targetDay: 'saturday' | 'sunday'): boolean => {
+    const seen = new Set<object>();
+    const dayDocs = [...skeletonByBracketKey.values()].filter(doc => {
+      if (seen.has(doc)) return false;
+      seen.add(doc);
+      if (doc.day === targetDay) return true;
+      if (doc.day === 'tbd' && doc.gameTime) return deriveDayFromGameTime(doc.gameTime) === targetDay;
+      return false;
+    });
+    if (dayDocs.length === 0) return true;
+    return dayDocs.some(doc => !doc.gameTime || now < new Date(doc.gameTime));
+  };
+
   const extraTabs: DayTab[] = [
     {
       dateKey: '__sat__',
       label: formatEasternTabLabel(SAT_ISO),
       isEliteEight: false,
-      hasUnlockedGames: true,
+      hasUnlockedGames: skeletonHasUnlockedForDay('saturday'),
       pickStatus: satPickVoided ? 'voided-pick' : satProjectionPick ? 'has-pick' : 'missing-pick',
     },
     {
       dateKey: '__sun__',
       label: formatEasternTabLabel(SUN_ISO),
       isEliteEight: false,
-      hasUnlockedGames: true,
+      hasUnlockedGames: skeletonHasUnlockedForDay('sunday'),
       pickStatus: sunPickVoided ? 'voided-pick' : sunProjectionPick ? 'has-pick' : 'missing-pick',
     },
     {
@@ -841,40 +860,53 @@ export default function MyPicksPage() {
             // Filter R32 framework games by the day stored on their Firestore skeleton docs.
             // The framework JSON stores all R32 games with day "tbd"; the actual saturday/sunday
             // assignment is set when the admin runs create-r32-skeleton and is stored in Firestore.
-            const r32Games = listFrameworkGamesByRound('Round of 32').filter(
-              game => skeletonByBracketKey.get(game.id)?.day === dayKey
-            );
+            // Fallback: if day is "tbd" but gameTime is set, derive the day from gameTime.
+            const r32Games = listFrameworkGamesByRound('Round of 32').filter(game => {
+              const skDoc = skeletonByBracketKey.get(game.id);
+              if (!skDoc) return false;
+              if (skDoc.day === dayKey) return true;
+              if (skDoc.day === 'tbd' && skDoc.gameTime) {
+                return deriveDayFromGameTime(skDoc.gameTime) === dayKey;
+              }
+              return false;
+            });
             return (
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-3">
                   Round of 32 — {effectiveActiveTab === '__sat__' ? getEasternGameDate(SAT_ISO) : getEasternGameDate(SUN_ISO)}
                 </p>
-                {r32Games.map(game => {
-                  const proj = projectionModel.get(game.id);
-                  if (!proj) return null;
-                  const userPick = (userEntry?.survivorPicks ?? []).find(
-                    (p: any) => p.gameId === game.id && p.isProjectionPick
-                  )?.team ?? null;
-                  const skeletonGame = skeletonByBracketKey.get(game.id);
-                  const r32GameTime = skeletonGame?.gameTime ?? null;
-                  const isR32Locked = r32GameTime ? now >= new Date(r32GameTime) : false;
-                  return (
-                    <ProjectionPickCard
-                      key={game.id}
-                      frameworkGame={game}
-                      projection={proj}
-                      userProjectionPick={userPick}
-                      allUsedTeams={alreadyPickedTeams}
-                      isLocked={isR32Locked}
-                      gameTime={r32GameTime}
-                      now={now}
-                      onPickTeam={(team, fgId, round, region) => {
-                        const teamSeed = proj.allPossibleTeams.find(t => t.name === team)?.seed ?? 0;
-                        setConfirmProjectionPick({ team, seed: teamSeed, frameworkGameId: fgId, round, region });
-                      }}
-                    />
-                  );
-                })}
+                {r32Games.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-6">
+                    Round of 32 games will appear here once the schedule is set. Check back after Round of 64 games are complete.
+                  </p>
+                ) : (
+                  r32Games.map(game => {
+                    const proj = projectionModel.get(game.id);
+                    if (!proj) return null;
+                    const userPick = (userEntry?.survivorPicks ?? []).find(
+                      (p: any) => p.gameId === game.id && p.isProjectionPick
+                    )?.team ?? null;
+                    const skeletonGame = skeletonByBracketKey.get(game.id);
+                    const r32GameTime = skeletonGame?.gameTime ?? null;
+                    const isR32Locked = r32GameTime ? now >= new Date(r32GameTime) : false;
+                    return (
+                      <ProjectionPickCard
+                        key={game.id}
+                        frameworkGame={game}
+                        projection={proj}
+                        userProjectionPick={userPick}
+                        allUsedTeams={alreadyPickedTeams}
+                        isLocked={isR32Locked}
+                        gameTime={r32GameTime}
+                        now={now}
+                        onPickTeam={(team, fgId, round, region) => {
+                          const teamSeed = proj.allPossibleTeams.find(t => t.name === team)?.seed ?? 0;
+                          setConfirmProjectionPick({ team, seed: teamSeed, frameworkGameId: fgId, round, region });
+                        }}
+                      />
+                    );
+                  })
+                )}
               </div>
             );
           })()}

@@ -24,10 +24,10 @@ export async function POST(request: NextRequest) {
     // Mark game complete
     await db.collection('games').doc(gameId).update({ winner, isComplete: true });
 
-    // Determine loser and seeds
+    // Determine loser and seeds (seeds may be null for skeleton/R32 games)
     const loserName: string = gameData.homeTeam === winner ? gameData.awayTeam : gameData.homeTeam;
-    const winnerSeed: number = gameData.homeTeam === winner ? gameData.homeSeed : gameData.awaySeed;
-    const loserSeed: number = gameData.homeTeam === winner ? gameData.awaySeed : gameData.homeSeed;
+    const winnerSeed: number = (gameData.homeTeam === winner ? gameData.homeSeed : gameData.awaySeed) ?? 0;
+    const loserSeed: number = (gameData.homeTeam === winner ? gameData.awaySeed : gameData.homeSeed) ?? 0;
     const round: string = gameData.round ?? 'Round of 64';
 
     // Score entries and mark losing team as eliminated
