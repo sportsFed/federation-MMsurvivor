@@ -185,7 +185,7 @@ export default function AdminGamesPage() {
           <div className="text-xs text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-2">
             <span>{game.region} — {game.round}</span>
             {isSkeleton && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-500 border border-slate-600/50">[Framework]</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-500 border border-slate-600/50">[Skeleton / Projection]</span>
             )}
           </div>
           {isSkeleton ? (
