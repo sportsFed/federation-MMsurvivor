@@ -9,7 +9,6 @@ import {
   buildTeamsByRegionSeed,
   buildFirestoreGamesBracketKeyMap,
   buildProjectionModel,
-  listFrameworkGamesByDay,
   getFramework,
   type FrameworkGame,
   type GameProjection,
@@ -410,9 +409,17 @@ export default function MyPicksPage() {
       return;
     }
 
-    const fwGame = getFramework().games.find(g => g.id === frameworkGameId);
-    const day = fwGame?.day ?? 'tbd';
-    const dateKey = day === 'saturday' ? '__sat__' : day === 'sunday' ? '__sun__' : '__proj__';
+    const skeletonGame = games.find((g: any) => g.id === frameworkGameId);
+    const skeletonGT = skeletonGame?.gameTime ?? null;
+    let dateKey: string;
+    if (skeletonGT) {
+      const skeletonDateKey = getEasternDateKey(skeletonGT);
+      const satDateKey = getEasternDateKey(SAT_ISO);
+      const sunDateKey = getEasternDateKey(SUN_ISO);
+      dateKey = skeletonDateKey === satDateKey ? '__sat__' : skeletonDateKey === sunDateKey ? '__sun__' : '__proj__';
+    } else {
+      dateKey = '__proj__';
+    }
 
     try {
       const entryRef = doc(db, 'entries', userId);
@@ -823,26 +830,45 @@ export default function MyPicksPage() {
 
           {/* Saturday / Sunday Projection Pick tabs */}
           {(effectiveActiveTab === '__sat__' || effectiveActiveTab === '__sun__') && (() => {
-            const dayKey = effectiveActiveTab === '__sat__' ? 'saturday' : 'sunday';
-            const r32Games = listFrameworkGamesByDay(dayKey as 'saturday' | 'sunday');
+            const targetDateKey = effectiveActiveTab === '__sat__'
+              ? getEasternDateKey(SAT_ISO)
+              : getEasternDateKey(SUN_ISO);
+            const skeletonGamesForDay = (games as any[]).filter((g: any) => {
+              if (!g.isSkeletonGame) return false;
+              const gt = g.gameTime;
+              if (!gt) return false;
+              return getEasternDateKey(gt) === targetDateKey;
+            }).sort((a: any, b: any) => {
+              const aTime = new Date(a.gameTime ?? 0).getTime();
+              const bTime = new Date(b.gameTime ?? 0).getTime();
+              return aTime - bTime;
+            });
+            const fwGameById = new Map(getFramework().games.map(g => [g.id, g]));
             return (
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-3">
                   Round of 32 — {effectiveActiveTab === '__sat__' ? getEasternGameDate(SAT_ISO) : getEasternGameDate(SUN_ISO)}
                 </p>
-                {r32Games.map(game => {
-                  const proj = projectionModel.get(game.id);
+                {skeletonGamesForDay.length === 0 && (
+                  <div className="text-center py-10 text-slate-500 text-sm font-sans">
+                    No Round of 32 games scheduled for this day yet.<br />
+                    <span className="text-xs text-slate-600">Set game times in Admin → Manage Games.</span>
+                  </div>
+                )}
+                {skeletonGamesForDay.map((skeletonGame: any) => {
+                  const proj = projectionModel.get(skeletonGame.id);
                   if (!proj) return null;
+                  const fwGame = fwGameById.get(skeletonGame.id);
+                  if (!fwGame) return null;
                   const userPick = (userEntry?.survivorPicks ?? []).find(
-                    (p: any) => p.gameId === game.id && p.isProjectionPick
+                    (p: any) => p.gameId === skeletonGame.id && p.isProjectionPick
                   )?.team ?? null;
-                  const skeletonGame = games.find((g: any) => g.id === game.id);
-                  const r32GameTime = skeletonGame?.gameTime ?? null;
+                  const r32GameTime = skeletonGame.gameTime ?? null;
                   const isR32Locked = r32GameTime ? now >= new Date(r32GameTime) : false;
                   return (
                     <ProjectionPickCard
-                      key={game.id}
-                      frameworkGame={game}
+                      key={skeletonGame.id}
+                      frameworkGame={fwGame}
                       projection={proj}
                       userProjectionPick={userPick}
                       allUsedTeams={alreadyPickedTeams}
@@ -862,7 +888,7 @@ export default function MyPicksPage() {
 
           {/* Projections tab — Sweet 16 + Elite Eight view-only */}
           {effectiveActiveTab === '__proj__' && (() => {
-            const s16Games = listFrameworkGamesByDay('tbd').filter(g => g.round === 'Sweet 16' || g.round === 'Elite Eight');
+            const s16Games = getFramework().games.filter(g => g.round === 'Sweet 16' || g.round === 'Elite Eight');
             return (
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-3">
