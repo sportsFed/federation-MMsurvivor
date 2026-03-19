@@ -9,27 +9,22 @@ const firebaseConfig = {
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize App Check (client-side only).
-// Gated on NEXT_PUBLIC_RECAPTCHA_SITE_KEY so dev builds without the key still work.
-// Production must have the env var set for Firestore requests to succeed.
-if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY) {
+// Optional App Check — only activated when the site key env var is present.
+// To enable: add NEXT_PUBLIC_RECAPTCHA_SITE_KEY to your Vercel environment variables
+// and register the reCAPTCHA v3 provider in the Firebase App Check console.
+if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY) {
   try {
     initializeAppCheck(app, {
       provider: new ReCaptchaV3Provider(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY),
       isTokenAutoRefreshEnabled: true,
     });
-  } catch (err) {
-    // App Check may already be initialized (e.g. hot-reload in dev) — ignore duplicate-init.
-    // Other unexpected errors are logged for diagnostics but don't prevent the app from loading.
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('[App Check] init warning:', err);
-    }
+  } catch {
+    // App Check already initialized (e.g. HMR / fast-refresh) — safe to ignore.
   }
 }
 

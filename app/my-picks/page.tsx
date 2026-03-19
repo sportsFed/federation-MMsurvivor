@@ -194,12 +194,14 @@ export default function MyPicksPage() {
       if (user) {
         setUserId(user.uid);
         try {
-          const [entrySnap, gamesSnap] = await Promise.all([
+          const [entrySnap, gamesSnap, teamsSnap] = await Promise.all([
             getDoc(doc(db, 'entries', user.uid)),
             getDocs(collection(db, 'games')),
+            getDocs(collection(db, 'teams')),
           ]);
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
           setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setFirestoreTeams(teamsSnap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<TeamData, 'id'>) })));
           // Build projection model
           const fw = getFramework();
           const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
@@ -892,14 +894,36 @@ export default function MyPicksPage() {
                     Round of 32 games will appear here once the schedule is set. Check back after Round of 64 games are complete.
                   </p>
                 ) : (
-                  r32SkeletonGames.map((skGame: any) => {
-                    const proj = projectionModel.get(skGame.id);
-                    if (!proj) return null;
-                    const userPick = (userEntry?.survivorPicks ?? []).find(
-                      (p: any) => p.gameId === skGame.id && p.isProjectionPick
-                    )?.team ?? null;
-                    const r32GameTime = skGame.gameTime ?? null;
+                  r32Games.map(game => {
+                    const proj = projectionModel.get(game.id);
+                    const skeletonGame = skeletonByBracketKey.get(game.id);
+                    const r32GameTime = skeletonGame?.gameTime ?? null;
                     const isR32Locked = r32GameTime ? now >= new Date(r32GameTime) : false;
+
+                    if (!proj) {
+                      // Projection model not populated yet — show a placeholder
+                      return (
+                        <div key={game.id} className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 mb-2 opacity-60">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
+                              {game.region} · Round of 32
+                            </span>
+                            {r32GameTime && (
+                              <span className="text-[11px] text-slate-500 font-sans">
+                                {formatEasternTime(r32GameTime)} ET
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 italic font-sans">
+                            Teams TBD — awaiting Round of 64 results
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    const userPick = (userEntry?.survivorPicks ?? []).find(
+                      (p: any) => p.gameId === game.id && p.isProjectionPick
+                    )?.team ?? null;
                     return (
                       <ProjectionPickCard
                         key={skGame.id}
