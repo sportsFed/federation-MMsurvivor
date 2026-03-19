@@ -72,15 +72,18 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Atomically rebuild totalPoints = survivorPoints + finalFourPoints
+      // Atomically rebuild totalPoints = survivorPoints + consolationPoints + finalFourPoints
       let survivorPts = 0;
       for (const pick of data.survivorPicks ?? []) {
-        survivorPts += calculateSurvivorScore(pick.seed ?? 0, pick.round ?? '');
+        if (pick.result === 'win') {
+          survivorPts += calculateSurvivorScore(pick.seed ?? 0, pick.round ?? '');
+        }
       }
+      const consolationPts = data.consolationPoints ?? 0;
 
       batch.update(entryDoc.ref, {
         finalFourPoints: finalFourPts,
-        totalPoints: parseFloat((survivorPts + finalFourPts).toFixed(1)),
+        totalPoints: parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(1)),
       });
       updatedCount++;
     }

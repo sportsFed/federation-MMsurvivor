@@ -9,15 +9,18 @@ export async function POST(request: Request) {
     
     for (const entryDoc of entriesSnapshot.docs) {
       const data = entryDoc.data();
-      let newTotal = 0;
+      let survivorPts = 0;
       
-      // Re-sum all survivor picks based on Seed x Multiplier
+      // Re-sum only winning picks (losses contribute via consolationPoints, not survivorPts)
       data.survivorPicks?.forEach((pick: any) => {
-        newTotal += calculateSurvivorScore(pick.seed, pick.round);
+        if (pick.result === 'win') {
+          survivorPts += calculateSurvivorScore(pick.seed, pick.round);
+        }
       });
 
-      // Include any already-awarded finalFourPoints (set by score-final-four endpoint)
-      newTotal += data.finalFourPoints ?? 0;
+      const consolationPts = data.consolationPoints ?? 0;
+      const finalFourPts = data.finalFourPoints ?? 0;
+      const newTotal = parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(1));
 
       await updateDoc(doc(db, 'entries', entryDoc.id), { totalPoints: newTotal });
     }
