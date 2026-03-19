@@ -176,7 +176,6 @@ function ProjectionPickCard({
 export default function MyPicksPage() {
   const router = useRouter();
   const [games, setGames] = useState<any[]>([]);
-  const [allEntries, setAllEntries] = useState<any[]>([]);
   const [userEntry, setUserEntry] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -203,15 +202,13 @@ export default function MyPicksPage() {
       if (user) {
         setUserId(user.uid);
         try {
-          const [entrySnap, gamesSnap, entriesSnap, teamsSnap] = await Promise.all([
+          const [entrySnap, gamesSnap, teamsSnap] = await Promise.all([
             getDoc(doc(db, 'entries', user.uid)),
             getDocs(collection(db, 'games')),
-            getDocs(collection(db, 'entries')),
             getDocs(collection(db, 'teams')),
           ]);
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
           setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-          setAllEntries(entriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           setFirestoreTeams(teamsSnap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<TeamData, 'id'>) })));
           // Build projection model
           const fw = getFramework();
@@ -235,20 +232,6 @@ export default function MyPicksPage() {
     });
     return () => unsubscribe();
   }, [router]);
-
-  // Build pick distribution map: gameId -> { home: count, away: count }
-  const pickDistribution = new Map<string, { home: number; away: number }>();
-  for (const entry of allEntries) {
-    for (const pick of entry.survivorPicks ?? []) {
-      if (!pick.gameId || !pick.team) continue;
-      const game = games.find((g: any) => g.id === pick.gameId);
-      if (!game) continue;
-      const current = pickDistribution.get(pick.gameId) ?? { home: 0, away: 0 };
-      if (pick.team === game.homeTeam) current.home++;
-      else if (pick.team === game.awayTeam) current.away++;
-      pickDistribution.set(pick.gameId, current);
-    }
-  }
 
   // Count teams from scored rounds + pending projection picks as "used"
   const scoredPickedTeams: string[] = (userEntry?.survivorPicks ?? [])
@@ -882,13 +865,34 @@ export default function MyPicksPage() {
                 ) : (
                   r32Games.map(game => {
                     const proj = projectionModel.get(game.id);
-                    if (!proj) return null;
-                    const userPick = (userEntry?.survivorPicks ?? []).find(
-                      (p: any) => p.gameId === game.id && p.isProjectionPick
-                    )?.team ?? null;
                     const skeletonGame = skeletonByBracketKey.get(game.id);
                     const r32GameTime = skeletonGame?.gameTime ?? null;
                     const isR32Locked = r32GameTime ? now >= new Date(r32GameTime) : false;
+
+                    if (!proj) {
+                      // Projection model not populated yet — show a placeholder
+                      return (
+                        <div key={game.id} className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 mb-2 opacity-60">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
+                              {game.region} · Round of 32
+                            </span>
+                            {r32GameTime && (
+                              <span className="text-[11px] text-slate-500 font-sans">
+                                {formatEasternTime(r32GameTime)} ET
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 italic font-sans">
+                            Teams TBD — awaiting Round of 64 results
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    const userPick = (userEntry?.survivorPicks ?? []).find(
+                      (p: any) => p.gameId === game.id && p.isProjectionPick
+                    )?.team ?? null;
                     return (
                       <ProjectionPickCard
                         key={game.id}
@@ -993,8 +997,6 @@ export default function MyPicksPage() {
                   const countdown = (!isLocked && gameTime) ? formatCountdown(gameTime, now) : null;
                   const gamePickEntry = (userEntry?.survivorPicks ?? []).find((p: any) => p.gameId === game.id);
                   const thisGamePickTeam = gamePickEntry?.team;
-                  const dist = pickDistribution.get(game.id);
-                  const distTotal = dist ? dist.home + dist.away : 0;
 
                   // Compact collapsed card for completed games
                   if (game.isComplete && game.winner) {
@@ -1037,11 +1039,6 @@ export default function MyPicksPage() {
                             )}
                           </div>
                         </div>
-                        {dist && distTotal > 0 && (
-                          <div className="mt-1 text-[10px] text-slate-500 font-sans">
-                            {game.homeTeam}: {dist.home} pick{dist.home !== 1 ? 's' : ''} · {game.awayTeam}: {dist.away} pick{dist.away !== 1 ? 's' : ''}
-                          </div>
-                        )}
                       </div>
                     );
                   }
@@ -1115,24 +1112,6 @@ export default function MyPicksPage() {
                           );
                         })}
                       </div>
-                      {/* Pick distribution — shown once game is locked */}
-                      {isLocked && dist && distTotal > 0 && (
-                        <div className="mt-2 pt-2 border-t border-slate-700/50">
-                          <div className="flex items-center gap-2 mb-1">
-                            <div
-                              className="h-1.5 rounded-full bg-blue-400"
-                              style={{ width: `${distTotal > 0 ? (dist.home / distTotal) * 100 : 50}%` }}
-                            />
-                            <div
-                              className="h-1.5 rounded-full bg-purple-400"
-                              style={{ width: `${distTotal > 0 ? (dist.away / distTotal) * 100 : 50}%` }}
-                            />
-                          </div>
-                          <p className="text-[10px] text-slate-500 font-sans">
-                            {dist.home} for {game.homeTeam} · {dist.away} for {game.awayTeam}
-                          </p>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
