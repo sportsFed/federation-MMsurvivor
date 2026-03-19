@@ -50,6 +50,7 @@ export default function StandingsPage() {
   const [entries, setEntries] = useState<any[]>([]);
   const [games, setGames] = useState<any[]>([]);
   const [gamesLoaded, setGamesLoaded] = useState(false);
+  const [eliminatedTeamSet, setEliminatedTeamSet] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   // authReady becomes true once onAuthStateChanged has fired its first callback,
@@ -90,6 +91,17 @@ export default function StandingsPage() {
     }).catch((err) => {
       console.error('Failed to load games for standings:', err);
       setGamesLoaded(true); // mark loaded even on error so UI isn't permanently blocked
+    });
+
+    getDocs(collection(db, 'teams')).then((snap) => {
+      const eliminated = new Set<string>();
+      snap.docs.forEach((d) => {
+        const t = d.data();
+        if (t.isEliminated === true && t.name) eliminated.add(t.name);
+      });
+      setEliminatedTeamSet(eliminated);
+    }).catch((err) => {
+      console.error('Failed to load teams for standings:', err);
     });
   }, []);
 
@@ -220,7 +232,7 @@ export default function StandingsPage() {
                     </td>
                     {/* Total pts */}
                     <td className="py-1.5 px-2 whitespace-nowrap text-right font-mono text-xs font-bold text-fedRed">
-                      {(entry.totalPoints ?? 0).toFixed(1)}
+                      {(entry.totalPoints ?? 0).toFixed(2)}
                     </td>
                     {/* Status badge */}
                     <td className="py-1.5 px-2 whitespace-nowrap text-center">
@@ -241,19 +253,33 @@ export default function StandingsPage() {
                     })}
                     {/* Final Four columns — lock emoji applies universally to ALL entrants (including current user)
                         until the deadline passes. No exceptions in the standings view. */}
-                    {FF_REGIONS.map((r) => (
-                      <td key={r.key} className={`py-1.5 px-2 whitespace-nowrap text-center ${deadlinePassed ? 'text-slate-300' : 'text-slate-600 text-xs'}`}>
-                        {deadlinePassed
-                          ? (entry.finalFourPicks?.[r.key] ?? '—')
-                          : '🔒'}
-                      </td>
-                    ))}
+                    {FF_REGIONS.map((r) => {
+                      const teamName = entry.finalFourPicks?.[r.key];
+                      const isEliminated = deadlinePassed && teamName && eliminatedTeamSet.has(teamName);
+                      return (
+                        <td key={r.key} className={`py-1.5 px-2 whitespace-nowrap text-center ${deadlinePassed ? 'text-slate-300' : 'text-slate-600 text-xs'}`}>
+                          {deadlinePassed
+                            ? (isEliminated
+                              ? <span style={{ textDecoration: 'line-through' }} className="text-slate-500">{teamName}</span>
+                              : (teamName ?? '—'))
+                            : '🔒'}
+                        </td>
+                      );
+                    })}
                     {/* Natty — same lock rule as Final Four */}
-                    <td className={`py-1.5 px-2 whitespace-nowrap text-center ${deadlinePassed ? 'text-slate-300 font-semibold' : 'text-slate-600 text-xs'}`}>
-                      {deadlinePassed
-                        ? (entry.finalFourPicks?.champ ?? '—')
-                        : '🔒'}
-                    </td>
+                    {(() => {
+                      const champName = entry.finalFourPicks?.champ;
+                      const isEliminated = deadlinePassed && champName && eliminatedTeamSet.has(champName);
+                      return (
+                        <td className={`py-1.5 px-2 whitespace-nowrap text-center ${deadlinePassed ? 'text-slate-300 font-semibold' : 'text-slate-600 text-xs'}`}>
+                          {deadlinePassed
+                            ? (isEliminated
+                              ? <span style={{ textDecoration: 'line-through' }} className="text-slate-500">{champName}</span>
+                              : (champName ?? '—'))
+                            : '🔒'}
+                        </td>
+                      );
+                    })()}
                   </tr>
                 );
               })}

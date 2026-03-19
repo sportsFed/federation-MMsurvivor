@@ -22,6 +22,7 @@ interface TeamData {
   name: string;
   regionalSeed?: number;
   nationalSeed?: number;
+  isEliminated?: boolean;
 }
 
 /** Shape of a Firestore skeleton game document (R32 placeholder created by create-r32-skeleton). */
@@ -1262,11 +1263,17 @@ export default function MyPicksPage() {
                 const teamName = userEntry.finalFourPicks[slot];
                 const teamData = firestoreTeams.find((t) => t.name === teamName);
                 const pts = teamData?.regionalSeed ? calculateFinalFourScore(teamData.regionalSeed) : null;
+                const isEliminated = teamData?.isEliminated === true;
                 return (
                   <div key={slot} className="bg-slate-800/30 rounded px-3 py-2 text-xs font-sans">
                     <span className="text-slate-500 block">{regions[i]} Final Four</span>
-                    <span className="text-white font-medium">{teamName || '—'}</span>
-                    {teamName && pts !== null && (
+                    {isEliminated ? (
+                      <span className="text-slate-500 font-medium" style={{ textDecoration: 'line-through' }}>{teamName}</span>
+                    ) : (
+                      <span className="text-white font-medium">{teamName || '—'}</span>
+                    )}
+                    {isEliminated && <span className="text-slate-600 ml-1">(eliminated)</span>}
+                    {teamName && pts !== null && !isEliminated && (
                       <span className="text-slate-400 ml-1">(+{pts} pts)</span>
                     )}
                   </div>
@@ -1278,10 +1285,16 @@ export default function MyPicksPage() {
                   const champName = userEntry.finalFourPicks.champ;
                   const champTeam = firestoreTeams.find((t) => t.name === champName);
                   const pts = champTeam?.nationalSeed ? calculateNationalChampScore(champTeam.nationalSeed) : null;
+                  const isEliminated = champTeam?.isEliminated === true;
                   return (
                     <>
-                      <span className="text-red-400 font-bold">{champName || '—'}</span>
-                      {champName && pts !== null && (
+                      {isEliminated ? (
+                        <span className="text-slate-500 font-bold" style={{ textDecoration: 'line-through' }}>{champName}</span>
+                      ) : (
+                        <span className="text-red-400 font-bold">{champName || '—'}</span>
+                      )}
+                      {isEliminated && <span className="text-slate-600 ml-1">(eliminated)</span>}
+                      {champName && pts !== null && !isEliminated && (
                         <span className="text-slate-400 ml-1">(+{pts} pts)</span>
                       )}
                     </>

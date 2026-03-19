@@ -162,6 +162,7 @@ export default function AdminDashboard() {
 
   const navLinks = [
     { href: '/admin/entries', label: 'Manage Entries', icon: '👥', desc: 'View, eliminate, or delete entrants' },
+    { href: '/admin/entry-editor', label: 'Entry Editor', icon: '✏️', desc: 'View and modify individual entrant survivor picks' },
     { href: '/admin/teams', label: 'Manage Teams', icon: '🏀', desc: 'Add individual tournament teams' },
     { href: '/admin/games', label: 'Manage Games', icon: '🎮', desc: 'Set game results & winners' },
     { href: '/admin/users', label: 'User Directory', icon: '📋', desc: 'Browse all registered users' },

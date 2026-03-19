@@ -64,12 +64,12 @@ export async function GET(request: Request) {
         const hasPick = survivorPicks.some((p: any) => p.gameId && gameIdsForDate.has(p.gameId));
 
         if (!hasPick) {
-          // Eliminate the entry — no consolation points for a missed pick
+          // Eliminate the entry — missed picks earn seed ÷ 100 consolation; seed is undefined so consolation = 0 by definition
           batch.update(entryDoc.ref, {
             isEliminated: true,
             eliminationReason: 'missed_pick',
             eliminationDate: dateKey,
-            consolationPoints: (entry.consolationPoints ?? 0), // preserve existing; missed picks earn 0
+            consolationPoints: (entry.consolationPoints ?? 0), // preserve existing; consolationPoints field always written for consistent score-final-four reconstruction
           });
 
           // Write audit log
