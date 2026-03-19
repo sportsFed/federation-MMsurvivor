@@ -26,13 +26,47 @@ function r32DayFromR64Day(r64Day: GameDay): GameDay {
   return 'tbd';
 }
 
+/**
+ * POST /api/admin/reset-r32-skeleton
+ *
+ * Deletes all existing R32 skeleton games and immediately re-generates them
+ * from the current R64 game times. Idempotent — safe to call multiple times.
+ *
+ * Returns: { deleted: number, created: number }
+ */
 export async function POST(request: NextRequest) {
   try {
     if (!(await validateAdminSession(request))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // ── 1. Fetch all R64 games from Firestore and build bracketKey → gameTime map ──
+    // ── 1. Delete all existing R32 skeleton games in batches of 400 ──
+    const existingSnap = await db
+      .collection('games')
+      .where('isSkeletonGame', '==', true)
+      .where('round', '==', 'Round of 32')
+      .get();
+
+    let deleted = 0;
+    const BATCH_LIMIT = 400;
+    let batch = db.batch();
+    let opsInBatch = 0;
+
+    for (const doc of existingSnap.docs) {
+      batch.delete(doc.ref);
+      opsInBatch++;
+      deleted++;
+      if (opsInBatch >= BATCH_LIMIT) {
+        await batch.commit();
+        batch = db.batch();
+        opsInBatch = 0;
+      }
+    }
+    if (opsInBatch > 0) {
+      await batch.commit();
+    }
+
+    // ── 2. Fetch R64 games and build bracketKey → gameTime map ──
     const r64Snap = await db.collection('games').where('round', '==', 'Round of 64').get();
     const r64GameTimeMap = new Map<string, string | null>();
     for (const doc of r64Snap.docs) {
@@ -47,39 +81,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── 2. Create R32 skeleton games, inheriting times from upstream R64 games ──
+    // ── 3. Re-create all R32 skeleton games (always overwrite, no skip check) ──
     const r32Games = listFrameworkGamesByRound('Round of 32');
-    const force = request.nextUrl.searchParams.get('force') === 'true';
     let created = 0;
-    let skipped = 0;
-    let forceOverwritten = 0;
 
     for (const game of r32Games) {
       const docRef = db.collection('games').doc(game.id);
 
-      if (!force) {
-        const existing = await docRef.get();
-        if (existing.exists) {
-          skipped++;
-          continue;
-        }
-      }
-
-      // Derive gameTime and day from the first upstream R64 game
       let gameTime: string | null = null;
       let day: GameDay = game.day;
 
       const firstParticipant = game.participants[0];
       if (firstParticipant.type === 'winnerOf') {
-        const upstreamId = firstParticipant.gameId; // e.g. "E-R64-G1"
+        const upstreamId = firstParticipant.gameId;
         const upstreamR64Time = r64GameTimeMap.get(upstreamId) ?? null;
         if (upstreamR64Time) {
-          // Shift two days forward so Thursday R64 → Saturday R32, Friday R64 → Sunday R32.
-          // Both upstream R64 games for a given R32 slot are on the same day, so using
-          // the first upstream game's time is sufficient — admins can fine-tune via "Set time".
           gameTime = shiftByTwoDays(upstreamR64Time);
         }
-        // Derive the R32 day from the actual gameTime of the upstream R64 game
         day = r32DayFromR64Day(deriveDayFromGameTime(upstreamR64Time));
       }
 
@@ -99,17 +117,10 @@ export async function POST(request: NextRequest) {
         createdAt: new Date().toISOString(),
       });
 
-      if (force) {
-        forceOverwritten++;
-      } else {
-        created++;
-      }
+      created++;
     }
 
-    if (force) {
-      return NextResponse.json({ created: 0, forceOverwritten });
-    }
-    return NextResponse.json({ created, skipped });
+    return NextResponse.json({ deleted, created });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
