@@ -202,14 +202,13 @@ export default function MyPicksPage() {
       if (user) {
         setUserId(user.uid);
         try {
-          const [entrySnap, gamesSnap, teamsSnap] = await Promise.all([
+          const [entrySnap, gamesSnap] = await Promise.all([
             getDoc(doc(db, 'entries', user.uid)),
             getDocs(collection(db, 'games')),
-            getDocs(collection(db, 'teams')),
           ]);
+
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
           setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-          setFirestoreTeams(teamsSnap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<TeamData, 'id'>) })));
           // Build projection model
           const fw = getFramework();
           const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
