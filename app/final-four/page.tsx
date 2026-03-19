@@ -124,6 +124,8 @@ export default function FinalFourPage() {
         {(['f1', 'f2', 'f3', 'f4'] as const).map((slot) => {
           const region = SLOT_REGIONS[slot];
           const regionTeams = teamsForRegion(region);
+          const pickedTeam = teams.find((t) => t.name === picks[slot]);
+          const isPickEliminated = effectiveLocked && pickedTeam?.isEliminated === true;
           return (
             <div key={slot} className="glass-panel p-5 border border-slate-700">
               <label className="block font-sans font-semibold text-sm text-fedRed uppercase tracking-wider mb-3">
@@ -142,6 +144,11 @@ export default function FinalFourPage() {
                   </option>
                 ))}
               </select>
+              {isPickEliminated && (
+                <p className="mt-1 text-xs text-slate-500 font-sans">
+                  <span style={{ textDecoration: 'line-through' }}>{picks[slot]}</span> ❌ Eliminated
+                </p>
+              )}
             </div>
           );
         })}
@@ -164,6 +171,11 @@ export default function FinalFourPage() {
             </option>
           ))}
         </select>
+        {effectiveLocked && picks.champ && teams.find((t) => t.name === picks.champ)?.isEliminated && (
+          <p className="mt-1 text-xs text-slate-500 font-sans text-center">
+            <span style={{ textDecoration: 'line-through' }}>{picks.champ}</span> ❌ Eliminated
+          </p>
+        )}
       </div>
 
       {saveMessage && (
