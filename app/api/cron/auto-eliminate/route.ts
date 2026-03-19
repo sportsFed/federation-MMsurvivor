@@ -69,6 +69,7 @@ export async function GET(request: Request) {
             isEliminated: true,
             eliminationReason: 'missed_pick',
             eliminationDate: dateKey,
+            consolationPoints: (entry.consolationPoints ?? 0), // preserve existing; missed picks earn 0
           });
 
           // Write audit log

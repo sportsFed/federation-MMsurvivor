@@ -60,6 +60,7 @@ export async function scoreCompletedGame(
       batch.update(entryDoc.ref, {
         survivorPicks: updatedPicks,
         isEliminated: true,
+        consolationPoints: (entry.consolationPoints ?? 0) + consolationPoints,
         totalPoints: (entry.totalPoints ?? 0) + consolationPoints,
       });
     }

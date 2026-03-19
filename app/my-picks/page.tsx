@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase/clientApp';
-import { collection, getDocs, doc, getDoc, updateDoc, addDoc } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged, getIdToken } from 'firebase/auth';
 import {
   buildTeamsByRegionSeed,
   buildFirestoreGamesBracketKeyMap,
@@ -92,6 +92,7 @@ interface ProjectionPickCardProps {
   projection: GameProjection;
   userProjectionPick: string | null;
   allUsedTeams: string[];
+  eliminatedTeams: string[];
   isLocked: boolean;
   gameTime?: string | null;
   now?: Date;
@@ -103,6 +104,7 @@ function ProjectionPickCard({
   projection,
   userProjectionPick,
   allUsedTeams,
+  eliminatedTeams,
   isLocked,
   gameTime,
   now,
@@ -115,7 +117,8 @@ function ProjectionPickCard({
   function TeamChip({ team }: { team: ProjectedTeam }) {
     const isSelected = userProjectionPick === team.name;
     const isUsed = allUsedTeams.includes(team.name) && !isSelected;
-    const canPick = !isLocked && !isUsed;
+    const isEliminated = eliminatedTeams.includes(team.name);
+    const canPick = !isLocked && !isUsed && !isEliminated;
     return (
       <button
         onClick={() => canPick && onPickTeam(team.name, frameworkGame.id, frameworkGame.round, frameworkGame.region)}
@@ -123,6 +126,8 @@ function ProjectionPickCard({
         className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left w-full ${
           isSelected
             ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-pointer hover:bg-green-700/60'
+            : isEliminated
+            ? 'bg-slate-800/40 border border-slate-700/30 text-slate-600 cursor-not-allowed line-through'
             : isUsed
             ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
             : isLocked
@@ -133,8 +138,9 @@ function ProjectionPickCard({
         <span className="text-[10px] text-slate-500 block mb-0.5">#{team.seed}</span>
         <span className="block leading-tight text-xs">{team.name}</span>
         {isSelected && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
-        {isUsed && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
-        {isLocked && !isSelected && !isUsed && (
+        {isEliminated && <span className="text-[10px] text-slate-600 mt-0.5 block">Eliminated</span>}
+        {isUsed && !isEliminated && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
+        {isLocked && !isSelected && !isUsed && !isEliminated && (
           <span className="text-[10px] text-slate-600 mt-0.5 block">Locked</span>
         )}
       </button>
@@ -210,13 +216,15 @@ export default function MyPicksPage() {
       if (user) {
         setUserId(user.uid);
         try {
-          const [entrySnap, gamesSnap] = await Promise.all([
+          const [entrySnap, gamesSnap, teamsSnap] = await Promise.all([
             getDoc(doc(db, 'entries', user.uid)),
             getDocs(collection(db, 'games')),
+            getDocs(collection(db, 'teams')),
           ]);
 
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
           setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setFirestoreTeams(teamsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeamData)));
           // Build projection model
           const fw = getFramework();
           const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
@@ -258,6 +266,10 @@ export default function MyPicksPage() {
     )
   );
 
+  const eliminatedTeamNames: string[] = firestoreTeams
+    .filter((t: any) => t.isEliminated === true)
+    .map((t: any) => t.name as string);
+
   // Helper: derive effective dateKey for a pick (backward compat for picks without dateKey)
   const getEffectivePickDateKey = (pick: any): string | null => {
     if (pick.dateKey) return pick.dateKey;
@@ -298,7 +310,6 @@ export default function MyPicksPage() {
     const isEliteEightGame = game.round === 'Elite Eight';
 
     try {
-      const entryRef = doc(db, 'entries', userId);
       const newPickEntry = {
         team,
         round: game.round,
@@ -348,26 +359,27 @@ export default function MyPicksPage() {
         }
       }
 
-      await updateDoc(entryRef, {
-        survivorPicks: updatedPicks,
-        currentPick: team,
-      });
-      // Write audit log entry
-      try {
-        await addDoc(collection(db, 'pickLog'), {
-          userId,
-          displayName: userEntry?.displayName ?? '',
+      const idToken = await getIdToken(auth.currentUser!);
+      const res = await fetch('/api/picks/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
           team,
+          gameId: game.id,
           round: game.round,
           region: game.region,
-          gameId: game.id,
           dateKey: gameDateKey,
-          action,
-          previousTeam,
-          timestamp: new Date().toISOString(),
-        });
-      } catch {
-        // Non-fatal: log failure doesn't block pick submission
+          isProjectionPick: false,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        showMessage(data.error ?? 'Failed to submit pick.', 5000);
+        return;
       }
       setUserEntry((prev: any) => ({
         ...prev,
@@ -411,7 +423,6 @@ export default function MyPicksPage() {
     const dateKey = day === 'saturday' ? '__sat__' : day === 'sunday' ? '__sun__' : '__proj__';
 
     try {
-      const entryRef = doc(db, 'entries', userId);
       const newPickEntry = {
         team,
         round,
@@ -441,25 +452,28 @@ export default function MyPicksPage() {
         action = 'submitted';
       }
 
-      await updateDoc(entryRef, {
-        survivorPicks: updatedPicks,
-      });
-      try {
-        await addDoc(collection(db, 'pickLog'), {
-          userId,
-          displayName: userEntry?.displayName ?? '',
+      const idToken = await getIdToken(auth.currentUser!);
+      const res = await fetch('/api/picks/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
           team,
+          gameId: frameworkGameId,
           round,
           region,
-          gameId: frameworkGameId,
           dateKey,
-          action,
-          previousTeam,
           isProjectionPick: true,
-          timestamp: new Date().toISOString(),
-        });
-      } catch {
-        // Non-fatal
+          frameworkGameId,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        showMessage(data.error ?? 'Failed to submit pick.', 5000);
+        return;
       }
       setUserEntry((prev: any) => ({
         ...prev,
@@ -913,6 +927,7 @@ export default function MyPicksPage() {
                         projection={proj}
                         userProjectionPick={userPick}
                         allUsedTeams={alreadyPickedTeams}
+                        eliminatedTeams={eliminatedTeamNames}
                         isLocked={isR32Locked}
                         gameTime={r32GameTime}
                         now={now}
