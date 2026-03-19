@@ -10,6 +10,7 @@ import {
   buildFirestoreGamesBracketKeyMap,
   buildProjectionModel,
   listFrameworkGamesByDay,
+  listFrameworkGamesByRound,
   getFramework,
   type FrameworkGame,
   type GameProjection,
@@ -485,6 +486,19 @@ export default function MyPicksPage() {
   // Exclude skeleton R32 games — they are handled by the dedicated __sat__/__sun__ tabs
   const nonSkeletonGames = sortedGames.filter((g: any) => !g.isSkeletonGame);
 
+  // Build lookup map: framework game ID → skeleton Firestore game doc
+  // Skeleton docs are created with their Firestore doc ID = framework game ID (e.g. "E-R32-G1"),
+  // and also store that same ID in the `bracketKey` field.  We key by both to handle any doc
+  // that might have been created with a different ID than its bracketKey.
+  const skeletonByBracketKey = new Map<string, any>();
+  for (const g of games) {
+    if (!(g as any).isSkeletonGame) continue;
+    skeletonByBracketKey.set((g as any).id, g);
+    if ((g as any).bracketKey && (g as any).bracketKey !== (g as any).id) {
+      skeletonByBracketKey.set((g as any).bracketKey, g);
+    }
+  }
+
   // Group by calendar date (in Eastern Time)
   const gamesByDay = nonSkeletonGames.reduce((acc: Record<string, any[]>, game) => {
     const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
@@ -824,7 +838,12 @@ export default function MyPicksPage() {
           {/* Saturday / Sunday Projection Pick tabs */}
           {(effectiveActiveTab === '__sat__' || effectiveActiveTab === '__sun__') && (() => {
             const dayKey = effectiveActiveTab === '__sat__' ? 'saturday' : 'sunday';
-            const r32Games = listFrameworkGamesByDay(dayKey as 'saturday' | 'sunday');
+            // Filter R32 framework games by the day stored on their Firestore skeleton docs.
+            // The framework JSON stores all R32 games with day "tbd"; the actual saturday/sunday
+            // assignment is set when the admin runs create-r32-skeleton and is stored in Firestore.
+            const r32Games = listFrameworkGamesByRound('Round of 32').filter(
+              game => skeletonByBracketKey.get(game.id)?.day === dayKey
+            );
             return (
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-3">
@@ -836,7 +855,7 @@ export default function MyPicksPage() {
                   const userPick = (userEntry?.survivorPicks ?? []).find(
                     (p: any) => p.gameId === game.id && p.isProjectionPick
                   )?.team ?? null;
-                  const skeletonGame = games.find((g: any) => g.id === game.id);
+                  const skeletonGame = skeletonByBracketKey.get(game.id);
                   const r32GameTime = skeletonGame?.gameTime ?? null;
                   const isR32Locked = r32GameTime ? now >= new Date(r32GameTime) : false;
                   return (
