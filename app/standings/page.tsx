@@ -52,6 +52,12 @@ export default function StandingsPage() {
   const [gamesLoaded, setGamesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // authReady becomes true once onAuthStateChanged has fired its first callback,
+  // guaranteeing the Firebase auth token is fully resolved before we open the
+  // Firestore snapshot listener. Without this gate, the listener can race
+  // against token initialisation and receive a permission error on first mount
+  // for logged-in users, even though the security rules allow public reads.
+  const [authReady, setAuthReady] = useState(false);
   const [snapshotError, setSnapshotError] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const currentUserRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -67,9 +73,12 @@ export default function StandingsPage() {
     }
   }, [currentUserId, entries]);
 
+  // Single onAuthStateChanged listener — sets both the current user ID for row
+  // highlighting AND the authReady gate so the snapshot effect can proceed.
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUserId(user?.uid ?? null);
+      setAuthReady(true);
     });
     return () => unsub();
   }, []);
@@ -84,7 +93,14 @@ export default function StandingsPage() {
     });
   }, []);
 
+  // Gate this effect on authReady so the Firestore listener is never opened
+  // until the Firebase auth token has fully resolved. This prevents the
+  // race condition where an authenticated user's token is not yet attached
+  // to the first request, causing Firestore to emit a permission error and
+  // permanently setting snapshotError = true with no retry path.
   useEffect(() => {
+    if (!authReady) return;
+
     // Remove orderBy to avoid composite index requirement; sort client-side instead
     const q = query(collection(db, 'entries'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -97,12 +113,12 @@ export default function StandingsPage() {
       setEntries(sorted);
       setLoading(false);
     }, (error) => {
-      console.error('Standings snapshot error:', error);
+      console.error('Standings snapshot error:', error.code, error);
       setSnapshotError(true);
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [authReady]);
 
   // Derive sorted unique date keys from real (non-skeleton) games
   const survivorDateKeys: string[] = gamesLoaded
