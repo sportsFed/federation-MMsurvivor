@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase/clientApp';
-import { collection, getDocs, doc, getDoc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, addDoc, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import {
   buildTeamsByRegionSeed,
@@ -197,41 +197,51 @@ export default function MyPicksPage() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let gamesUnsub: (() => void) | null = null;
+
+    const authUnsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUserId(user.uid);
         try {
-          const [entrySnap, gamesSnap, entriesSnap, teamsSnap] = await Promise.all([
+          const [entrySnap, entriesSnap, teamsSnap] = await Promise.all([
             getDoc(doc(db, 'entries', user.uid)),
-            getDocs(collection(db, 'games')),
             getDocs(collection(db, 'entries')),
             getDocs(collection(db, 'teams')),
           ]);
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
-          setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           setAllEntries(entriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           setFirestoreTeams(teamsSnap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<TeamData, 'id'>) })));
-          // Build projection model
-          const fw = getFramework();
-          const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
-          const allGames = gamesSnap.docs.map(d => ({ id: d.id, ...d.data() as { region: string; homeSeed: number; awaySeed: number; winner: string | null; isComplete: boolean; isSkeletonGame?: boolean } }));
-          // Only map R64 games (real seeded games, not skeleton) to bracket keys
-          const r64Games = allGames.filter(g => !g.isSkeletonGame && g.homeSeed && g.awaySeed);
-          const bracketKeyMap = buildFirestoreGamesBracketKeyMap(r64Games);
-          setProjectionModel(buildProjectionModel(bracketKeyMap, teamsByRegionSeed));
-          // Load existing projection picks from entry
-          if (entrySnap.exists()) {
-            // projection picks are stored within survivorPicks (isProjectionPick: true) — already loaded via setUserEntry above
-          }
+
+          // Real-time listener for games so admin game-time changes appear instantly
+          gamesUnsub = onSnapshot(collection(db, 'games'), (gamesSnap) => {
+            const allGames = gamesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setGames(allGames);
+            // Rebuild projection model whenever games change
+            const fw = getFramework();
+            const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
+            const typedGames = gamesSnap.docs.map(d => ({ id: d.id, ...d.data() as { region: string; homeSeed: number; awaySeed: number; winner: string | null; isComplete: boolean; isSkeletonGame?: boolean } }));
+            const r64Games = typedGames.filter(g => !g.isSkeletonGame && g.homeSeed && g.awaySeed);
+            const bracketKeyMap = buildFirestoreGamesBracketKeyMap(r64Games);
+            setProjectionModel(buildProjectionModel(bracketKeyMap, teamsByRegionSeed));
+            setLoading(false);
+          }, (err: Error) => {
+            showMessage(`Error loading games: ${err.message}`);
+            setLoading(false);
+          });
         } catch (err: any) {
           showMessage(`Error loading data: ${err.message}`);
+          setLoading(false);
         }
       } else {
         router.push('/login');
+        setLoading(false);
       }
-      setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      authUnsub();
+      if (gamesUnsub) gamesUnsub();
+    };
   }, [router]);
 
   // Build pick distribution map: gameId -> { home: count, away: count }
@@ -793,7 +803,7 @@ export default function MyPicksPage() {
       ) : (
         <>
           {/* Sticky Day Tab Bar */}
-          {dayTabs.length > 0 && (
+          {allTabs.length > 0 && (
             <div className="sticky top-0 z-10 bg-[#0b1120]/95 backdrop-blur-sm border-b border-slate-800 mb-4 -mx-4 px-4 pb-2 pt-1">
               <div className="flex gap-1 overflow-x-auto scrollbar-none">
                 {allTabs.map((tab) => {
