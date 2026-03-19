@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     const duplicatePick = existingPicks.find(
       (p: any) =>
         p.team === team &&
-        !(p.gameId === effectiveGameId && (isProjectionPick ? p.isProjectionPick : !p.isProjectionPick))
+        !(p.dateKey === dateKey && (isProjectionPick ? p.isProjectionPick : !p.isProjectionPick))
     );
 
     if (duplicatePick) {
@@ -98,15 +98,16 @@ export async function POST(request: NextRequest) {
     let previousTeam: string | null = null;
 
     if (isProjectionPick) {
-      const hasPickForThisGame = existingPicks.some(
-        (p: any) => p.gameId === effectiveGameId && p.isProjectionPick
+      // Projection pick: replace any existing projection pick for the same dateKey
+      const hasPickForThisDate = existingPicks.some(
+        (p: any) => p.dateKey === dateKey && p.isProjectionPick
       );
-      if (hasPickForThisGame) {
+      if (hasPickForThisDate) {
         previousTeam = existingPicks.find(
-          (p: any) => p.gameId === effectiveGameId && p.isProjectionPick
+          (p: any) => p.dateKey === dateKey && p.isProjectionPick
         )?.team ?? null;
         updatedPicks = existingPicks.map((p: any) =>
-          p.gameId === effectiveGameId && p.isProjectionPick ? newPickEntry : p
+          p.dateKey === dateKey && p.isProjectionPick ? newPickEntry : p
         );
         action = 'changed';
       } else {
@@ -114,16 +115,16 @@ export async function POST(request: NextRequest) {
         action = 'submitted';
       }
     } else {
-      // Standard pick: replace any existing pick for the same gameId
-      const hasPickForThisGame = existingPicks.some(
-        (p: any) => p.gameId === gameId && !p.isProjectionPick
+      // Standard pick: replace any existing pick for the same dateKey
+      const hasPickForThisDate = existingPicks.some(
+        (p: any) => p.dateKey === dateKey && !p.isProjectionPick
       );
-      if (hasPickForThisGame) {
+      if (hasPickForThisDate) {
         previousTeam = existingPicks.find(
-          (p: any) => p.gameId === gameId && !p.isProjectionPick
+          (p: any) => p.dateKey === dateKey && !p.isProjectionPick
         )?.team ?? null;
         updatedPicks = existingPicks.map((p: any) =>
-          p.gameId === gameId && !p.isProjectionPick ? newPickEntry : p
+          p.dateKey === dateKey && !p.isProjectionPick ? newPickEntry : p
         );
         action = 'changed';
       } else {
