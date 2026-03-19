@@ -10,10 +10,8 @@ import {
   buildFirestoreGamesBracketKeyMap,
   buildProjectionModel,
   listFrameworkGamesByDay,
-  listFrameworkGamesByRound,
   getFramework,
   deriveDayFromGameTime,
-  type FrameworkGame,
   type GameProjection,
   type ProjectedTeam,
 } from '@/lib/bracket/framework';
@@ -24,6 +22,16 @@ interface TeamData {
   name: string;
   regionalSeed?: number;
   nationalSeed?: number;
+}
+
+/** Shape of a Firestore skeleton game document (R32 placeholder created by create-r32-skeleton). */
+interface SkeletonGameDoc {
+  id: string;
+  round: string;
+  region: string | null;
+  day: string;
+  gameTime: string | null;
+  isSkeletonGame: true;
 }
 
 function formatEasternTime(isoString: string): string {
@@ -80,7 +88,7 @@ function formatCountdown(isoString: string, now: Date): string | null {
 }
 
 interface ProjectionPickCardProps {
-  frameworkGame: FrameworkGame;
+  frameworkGame: { id: string; round: string; region: string | null };
   projection: GameProjection;
   userProjectionPick: string | null;
   allUsedTeams: string[];
@@ -394,8 +402,12 @@ export default function MyPicksPage() {
       return;
     }
 
-    const fwGame = getFramework().games.find(g => g.id === frameworkGameId);
-    const day = fwGame?.day ?? 'tbd';
+    // Derive dateKey from the Firestore skeleton game doc — it has the authoritative day field
+    // set by the admin create-r32-skeleton API (not the static framework JSON).
+    const skDay: string = skeletonGame?.day ?? 'tbd';
+    const day = (skDay === 'tbd' && projGameTime)
+      ? deriveDayFromGameTime(projGameTime)
+      : skDay;
     const dateKey = day === 'saturday' ? '__sat__' : day === 'sunday' ? '__sun__' : '__proj__';
 
     try {
@@ -839,42 +851,44 @@ export default function MyPicksPage() {
           {/* Saturday / Sunday Projection Pick tabs */}
           {(effectiveActiveTab === '__sat__' || effectiveActiveTab === '__sun__') && (() => {
             const dayKey = effectiveActiveTab === '__sat__' ? 'saturday' : 'sunday';
-            // Filter R32 framework games by the day stored on their Firestore skeleton docs.
-            // The framework JSON stores all R32 games with day "tbd"; the actual saturday/sunday
-            // assignment is set when the admin runs create-r32-skeleton and is stored in Firestore.
-            // Fallback: if day is "tbd" but gameTime is set, derive the day from gameTime.
-            const r32Games = listFrameworkGamesByRound('Round of 32').filter(game => {
-              const skDoc = skeletonByBracketKey.get(game.id);
-              if (!skDoc) return false;
-              if (skDoc.day === dayKey) return true;
-              if (skDoc.day === 'tbd' && skDoc.gameTime) {
-                return deriveDayFromGameTime(skDoc.gameTime) === dayKey;
-              }
-              return false;
-            });
+            // Use Firestore skeleton docs as the source of truth for R32 Saturday/Sunday grouping.
+            // The admin create-r32-skeleton API sets the authoritative day/gameTime on each skeleton
+            // doc; we don't rely on the static framework JSON for this assignment.
+            // Sort deterministically by region then id so the order matches Admin Manage Games.
+            const r32SkeletonGames = (games as SkeletonGameDoc[])
+              .filter((g) => g.isSkeletonGame === true && g.round === 'Round of 32')
+              .filter((g) => {
+                if (g.day === dayKey) return true;
+                if (g.day === 'tbd' && g.gameTime) return deriveDayFromGameTime(g.gameTime) === dayKey;
+                return false;
+              })
+              .sort((a, b) => {
+                if (a.region !== b.region) return (a.region ?? '').localeCompare(b.region ?? '');
+                return a.id.localeCompare(b.id);
+              });
             return (
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-widest font-sans mb-3">
                   Round of 32 — {effectiveActiveTab === '__sat__' ? getEasternGameDate(SAT_ISO) : getEasternGameDate(SUN_ISO)}
                 </p>
-                {r32Games.length === 0 ? (
+                {r32SkeletonGames.length === 0 ? (
                   <p className="text-sm text-slate-400 text-center py-6">
                     Round of 32 games will appear here once the schedule is set. Check back after Round of 64 games are complete.
                   </p>
                 ) : (
-                  r32Games.map(game => {
-                    const proj = projectionModel.get(game.id);
-                    const skeletonGame = skeletonByBracketKey.get(game.id);
-                    const r32GameTime = skeletonGame?.gameTime ?? null;
+                  r32SkeletonGames.map((sk) => {
+                    const proj = projectionModel.get(sk.id);
+                    // gameTime comes directly from the skeleton doc
+                    const r32GameTime = sk.gameTime ?? null;
                     const isR32Locked = r32GameTime ? now >= new Date(r32GameTime) : false;
 
                     if (!proj) {
                       // Projection model not populated yet — show a placeholder
                       return (
-                        <div key={game.id} className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 mb-2 opacity-60">
+                        <div key={sk.id} className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 mb-2 opacity-60">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
-                              {game.region} · Round of 32
+                              {sk.region} · Round of 32
                             </span>
                             {r32GameTime && (
                               <span className="text-[11px] text-slate-500 font-sans">
@@ -890,12 +904,12 @@ export default function MyPicksPage() {
                     }
 
                     const userPick = (userEntry?.survivorPicks ?? []).find(
-                      (p: any) => p.gameId === game.id && p.isProjectionPick
+                      (p: any) => p.gameId === sk.id && p.isProjectionPick
                     )?.team ?? null;
                     return (
                       <ProjectionPickCard
-                        key={game.id}
-                        frameworkGame={game}
+                        key={sk.id}
+                        frameworkGame={sk}
                         projection={proj}
                         userProjectionPick={userPick}
                         allUsedTeams={alreadyPickedTeams}
