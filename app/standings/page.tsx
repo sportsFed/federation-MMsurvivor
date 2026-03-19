@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { db, auth } from '@/lib/firebase/clientApp';
-import { collection, query, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };
@@ -14,14 +14,37 @@ function isDeadlinePassed(now: Date): boolean {
   return now >= FINAL_FOUR_DEADLINE;
 }
 
-function isGameLocked(gameId: string | undefined, games: any[], now: Date): boolean {
-  if (!gameId) return false;
-  const game = games.find((g: any) => g.id === gameId);
-  if (!game) return false;
-  const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
-  if (gameTime) return now >= new Date(gameTime);
-  return game.isComplete ?? false;
+function getEasternDateKey(isoString: string): string {
+  return new Date(isoString).toLocaleDateString('en-US', { timeZone: 'America/New_York' });
 }
+
+function getPickForDate(entry: any, dateKey: string, games: any[], now: Date): string {
+  const picks: any[] = entry.survivorPicks ?? [];
+  const pick = picks.find((p: any) => {
+    if (p.isProjectionPick) return false;
+    if (p.dateKey === dateKey) return true;
+    const g = games.find((g: any) => g.id === p.gameId);
+    if (!g) return false;
+    const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt;
+    return gt ? getEasternDateKey(gt) === dateKey : false;
+  });
+  if (!pick) return '—';
+  const game = games.find((g: any) => g.id === pick.gameId);
+  const gameTime = game?.gameTime ?? game?.tipoff ?? game?.scheduledAt;
+  const tipped = gameTime ? now >= new Date(gameTime) : (game?.isComplete ?? false);
+  return tipped ? pick.team : '🔒';
+}
+
+// Final Four column mapping: f1=East, f2=West, f3=South, f4=Midwest
+const FF_REGIONS = [
+  { key: 'f1', label: 'East' },
+  { key: 'f2', label: 'West' },
+  { key: 'f3', label: 'South' },
+  { key: 'f4', label: 'Midwest' },
+] as const;
+
+const STICKY_RANK_CLS = 'py-1.5 px-2 whitespace-nowrap sticky left-0 z-10 bg-[#0b1120]';
+const STICKY_NAME_CLS = 'py-1.5 px-2 whitespace-nowrap sticky left-10 z-10 bg-[#0b1120]';
 
 export default function StandingsPage() {
   const [entries, setEntries] = useState<any[]>([]);
@@ -62,13 +85,16 @@ export default function StandingsPage() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'entries'), orderBy('totalPoints', 'desc'));
+    // Remove orderBy to avoid composite index requirement; sort client-side instead
+    const q = query(collection(db, 'entries'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
+      const data: any[] = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
-      setEntries(data);
+      // Sort client-side by totalPoints descending
+      const sorted = [...data].sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0));
+      setEntries(sorted);
       setLoading(false);
     }, (error) => {
       console.error('Standings snapshot error:', error);
@@ -77,6 +103,21 @@ export default function StandingsPage() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Derive sorted unique date keys from real (non-skeleton) games
+  const survivorDateKeys: string[] = gamesLoaded
+    ? (Array.from(
+        new Set(
+          games
+            .filter((g: any) => !g.isSkeletonGame)
+            .map((g: any) => {
+              const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt;
+              return gt ? getEasternDateKey(gt) : null;
+            })
+            .filter(Boolean)
+        )
+      ).sort() as string[])
+    : [];
 
   if (loading) {
     return (
@@ -92,6 +133,8 @@ export default function StandingsPage() {
     );
   }
 
+  const deadlinePassed = isDeadlinePassed(now);
+
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <h1 className="font-sans font-bold text-3xl text-white mb-8 uppercase tracking-wide">Federation Leaderboard</h1>
@@ -102,112 +145,105 @@ export default function StandingsPage() {
       ) : entries.length === 0 ? (
         <div className="glass-panel p-10 text-center border border-white/10">
           <h2 className="font-bebas text-3xl text-white tracking-widest mb-2">Standings Coming Soon</h2>
-          <p className="text-slate-400 text-sm">The leaderboard will populate once the tournament begins and picks are scored. You're in — sit tight!</p>
+          <p className="text-slate-400 text-sm">The leaderboard will populate once the tournament begins and picks are scored. You&apos;re in — sit tight!</p>
         </div>
       ) : (
-      <div className="glass-panel overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-900/50 border-b border-slate-700">
-              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase w-10">#</th>
-              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase">Entrant</th>
-              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-right">Score</th>
-              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center">Status</th>
-              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">Today&apos;s Pick</th>
-              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">Final Four</th>
-              <th className="py-1.5 px-2 font-sans text-slate-400 tracking-widest text-xs uppercase text-center whitespace-nowrap">🏆 Champion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry, index) => {
-              const rank = index + 1;
-              const isCurrentUser = entry.id === currentUserId;
-              const isPaidPosition = rank <= 5;
-              const deadlinePassed = isDeadlinePassed(now);
-              const showFinalFourPicks = isCurrentUser || deadlinePassed;
+        <div className="glass-panel overflow-x-auto">
+          <table className="text-left border-collapse font-mono text-xs">
+            <thead>
+              <tr className="bg-slate-900/80 border-b border-slate-700">
+                {/* Sticky rank column */}
+                <th className={`${STICKY_RANK_CLS} text-[10px] uppercase tracking-widest text-slate-400 font-sans w-10`}>#</th>
+                {/* Sticky name column */}
+                <th className={`${STICKY_NAME_CLS} text-[10px] uppercase tracking-widest text-slate-400 font-sans`}>Entrant</th>
+                <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-right">Pts</th>
+                <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">Status</th>
+                {/* Survivor pick columns — one per unique tournament date */}
+                {survivorDateKeys.map((dk) => (
+                  <th key={dk} className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">
+                    {dk}
+                  </th>
+                ))}
+                {/* Final Four columns — one per region; lock applies to ALL entrants until deadline */}
+                {FF_REGIONS.map((r) => (
+                  <th key={r.key} className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">
+                    {r.label}
+                  </th>
+                ))}
+                {/* National champion column — same lock rule as Final Four */}
+                <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">Natty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry, index) => {
+                const rank = index + 1;
+                const isCurrentUser = entry.id === currentUserId;
 
-              // Determine survivor pick visibility: only show once the pick's game has tipped off.
-              // Prefer the first pending (unscored) pick so a future game's pick stays hidden
-              // even if a previous game's pick was the most recently submitted one.
-              const allSurvivorPicks: any[] = entry.survivorPicks ?? [];
-              const pendingSurvivorPick = allSurvivorPicks.find((p: any) => !p.result);
-              const latestSurvivorPick = pendingSurvivorPick ?? allSurvivorPicks
-                .reduce<any>((latest, p) =>
-                  !latest || new Date(p.pickedAt ?? 0) > new Date(latest.pickedAt ?? 0) ? p : latest,
-                  null);
-              // Only mark locked once the games collection has confirmed loading;
-              // default to hidden (false) while games are still being fetched.
-              const survivorPickLocked = gamesLoaded && isGameLocked(latestSurvivorPick?.gameId, games, now);
-
-              return (
-                <tr
-                  key={entry.id}
-                  ref={isCurrentUser ? currentUserRowRef : undefined}
-                  className={`border-b border-slate-800 transition ${
-                    isCurrentUser
-                      ? 'bg-red-900/10 border-l-2 border-l-fedRed'
-                      : isPaidPosition
-                      ? 'bg-amber-900/5 border-l-2 border-l-amber-500/50'
-                      : 'hover:bg-slate-800/30'
-                  }`}
-                >
-                  <td className="py-1.5 px-2 font-sans text-slate-400 text-sm">
-                    <span className={isPaidPosition ? 'text-amber-400 font-bold' : ''}>
+                return (
+                  <tr
+                    key={entry.id}
+                    ref={isCurrentUser ? currentUserRowRef : undefined}
+                    className={`border-b border-slate-800 transition even:bg-slate-800/20 ${
+                      isCurrentUser
+                        ? 'bg-red-900/10 border-l-2 border-l-fedRed'
+                        : ''
+                    } ${entry.isEliminated ? 'opacity-60' : ''}`}
+                  >
+                    {/* Rank — sticky */}
+                    <td className={`${STICKY_RANK_CLS} text-slate-400`}>
                       {RANK_EMOJI[rank] ?? rank}
-                    </span>
-                    {isPaidPosition && rank > 3 && <span className="ml-1 text-[10px] text-amber-600" aria-label="Paid position">💰</span>}
-                  </td>
-                  <td className="py-1.5 px-2 font-sans font-semibold text-sm text-white">
-                    {entry.displayName || 'Anonymous Entrant'}
-                    {isCurrentUser && (
-                      <span className="ml-2 text-xs text-fedRed font-sans uppercase tracking-widest">You</span>
-                    )}
-                  </td>
-                  <td className="py-1.5 px-2 text-right font-mono text-sm font-bold text-fedRed">
-                    {(entry.totalPoints ?? 0).toFixed(1)}
-                  </td>
-                  <td className="py-1.5 px-2 text-center">
-                    {entry.isEliminated ? (
-                      <span className="text-red-400 bg-red-900/30 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border border-red-500/30">Out</span>
-                    ) : (
-                      <span className="text-green-400 bg-green-900/30 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border border-green-500/30">Active</span>
-                    )}
-                  </td>
-                  <td className="py-1.5 px-2 text-center font-sans text-sm text-slate-300 whitespace-nowrap">
-                    {entry.currentPick ? (
-                      survivorPickLocked
-                        ? entry.currentPick
-                        : <span className="text-slate-500 italic text-xs">Pending</span>
-                    ) : (
-                      <span className="text-slate-600">—</span>
-                    )}
-                  </td>
-                  <td className="py-1.5 px-2 text-center font-sans text-xs text-slate-400 whitespace-nowrap">
-                    {showFinalFourPicks ? (
-                      entry.finalFourPicks ? (
-                        <span className="text-slate-300">
-                          {[entry.finalFourPicks.f1, entry.finalFourPicks.f2, entry.finalFourPicks.f3, entry.finalFourPicks.f4]
-                            .filter(Boolean)
-                            .join(', ') || <span className="text-slate-600">—</span>}
-                        </span>
-                      ) : <span className="text-slate-600">—</span>
-                    ) : (
-                      <span className="text-slate-500 italic text-xs">Locked</span>
-                    )}
-                  </td>
-                  <td className="py-1.5 px-2 text-center font-sans text-sm font-semibold text-red-400 whitespace-nowrap">
-                    {showFinalFourPicks ? (
-                      entry.finalFourPicks?.champ ?? <span className="text-slate-600">—</span>
-                    ) : (
-                      <span className="text-slate-500 italic text-xs font-normal">Locked</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                    </td>
+                    {/* Name — sticky */}
+                    <td className={`${STICKY_NAME_CLS} text-white`}>
+                      <span className="max-w-[120px] truncate inline-block align-bottom font-sans text-xs font-semibold">
+                        {entry.displayName || 'Anonymous Entrant'}
+                      </span>
+                      {isCurrentUser && (
+                        <span className="ml-1 text-[10px] text-fedRed font-sans uppercase tracking-widest">You</span>
+                      )}
+                    </td>
+                    {/* Total pts */}
+                    <td className="py-1.5 px-2 whitespace-nowrap text-right font-mono text-xs font-bold text-fedRed">
+                      {(entry.totalPoints ?? 0).toFixed(1)}
+                    </td>
+                    {/* Status badge */}
+                    <td className="py-1.5 px-2 whitespace-nowrap text-center">
+                      {entry.isEliminated ? (
+                        <span className="text-red-400 bg-red-900/30 border border-red-500/30 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">Eliminated</span>
+                      ) : (
+                        <span className="text-green-400 bg-green-900/30 border border-green-500/30 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">Active</span>
+                      )}
+                    </td>
+                    {/* Survivor pick columns — revealed per game tip-off time */}
+                    {survivorDateKeys.map((dk) => {
+                      const cellVal = gamesLoaded ? getPickForDate(entry, dk, games, now) : '🔒';
+                      return (
+                        <td key={dk} className={`py-1.5 px-2 whitespace-nowrap text-center ${cellVal === '🔒' ? 'text-slate-600 text-xs' : 'text-slate-300'}`}>
+                          {cellVal}
+                        </td>
+                      );
+                    })}
+                    {/* Final Four columns — lock emoji applies universally to ALL entrants (including current user)
+                        until the deadline passes. No exceptions in the standings view. */}
+                    {FF_REGIONS.map((r) => (
+                      <td key={r.key} className={`py-1.5 px-2 whitespace-nowrap text-center ${deadlinePassed ? 'text-slate-300' : 'text-slate-600 text-xs'}`}>
+                        {deadlinePassed
+                          ? (entry.finalFourPicks?.[r.key] ?? '—')
+                          : '🔒'}
+                      </td>
+                    ))}
+                    {/* Natty — same lock rule as Final Four */}
+                    <td className={`py-1.5 px-2 whitespace-nowrap text-center ${deadlinePassed ? 'text-slate-300 font-semibold' : 'text-slate-600 text-xs'}`}>
+                      {deadlinePassed
+                        ? (entry.finalFourPicks?.champ ?? '—')
+                        : '🔒'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

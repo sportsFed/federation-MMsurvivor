@@ -359,7 +359,11 @@ export default function MyPicksPage() {
         }
       }
 
-      const idToken = await getIdToken(auth.currentUser!);
+      if (!auth.currentUser) {
+        showMessage('Session expired. Please refresh the page and log in again.');
+        return;
+      }
+      const idToken = await getIdToken(auth.currentUser);
       const res = await fetch('/api/picks/submit', {
         method: 'POST',
         headers: {
@@ -452,7 +456,11 @@ export default function MyPicksPage() {
         action = 'submitted';
       }
 
-      const idToken = await getIdToken(auth.currentUser!);
+      if (!auth.currentUser) {
+        showMessage('Session expired. Please refresh the page and log in again.');
+        return;
+      }
+      const idToken = await getIdToken(auth.currentUser);
       const res = await fetch('/api/picks/submit', {
         method: 'POST',
         headers: {
@@ -877,8 +885,9 @@ export default function MyPicksPage() {
                 return false;
               })
               .sort((a, b) => {
-                if (a.region !== b.region) return (a.region ?? '').localeCompare(b.region ?? '');
-                return a.id.localeCompare(b.id);
+                const aTime = a.gameTime ? new Date(a.gameTime).getTime() : Number.MAX_SAFE_INTEGER;
+                const bTime = b.gameTime ? new Date(b.gameTime).getTime() : Number.MAX_SAFE_INTEGER;
+                return aTime - bTime;
               });
             return (
               <div>
@@ -1007,12 +1016,14 @@ export default function MyPicksPage() {
             const tabGames = gamesByDay[effectiveActiveTab] as any[];
             const isEliteEightDay = tabGames.some((g: any) => g.round === 'Elite Eight');
 
-            // Sort: incomplete/upcoming first, completed at bottom
+            // Sort: incomplete/upcoming first, completed at bottom; nulls sort to end within each group
             const sortedTabGames = [...tabGames].sort((a, b) => {
               if (a.isComplete && !b.isComplete) return 1;
               if (!a.isComplete && b.isComplete) return -1;
-              const aTime = new Date(a.gameTime ?? a.tipoff ?? 0).getTime();
-              const bTime = new Date(b.gameTime ?? b.tipoff ?? 0).getTime();
+              const aRaw = a.gameTime ?? a.tipoff ?? null;
+              const bRaw = b.gameTime ?? b.tipoff ?? null;
+              const aTime = aRaw ? new Date(aRaw).getTime() : Number.MAX_SAFE_INTEGER;
+              const bTime = bRaw ? new Date(bRaw).getTime() : Number.MAX_SAFE_INTEGER;
               return aTime - bTime;
             });
 
