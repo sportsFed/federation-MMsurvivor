@@ -707,7 +707,17 @@ export default function MyPicksPage() {
       pickStatus: 'complete',
     },
   ];
-  const allTabs = [...dayTabs, ...extraTabs];
+  const realDateKeys = new Set(dayTabs.map(t => t.dateKey));
+  const satDate = getEasternDateKey(SAT_ISO);
+  const sunDate = getEasternDateKey(SUN_ISO);
+
+  const filteredExtraTabs = extraTabs.filter(t => {
+    if (t.dateKey === '__sat__' && realDateKeys.has(satDate)) return false;
+    if (t.dateKey === '__sun__' && realDateKeys.has(sunDate)) return false;
+    return true;
+  });
+
+  const allTabs = [...dayTabs, ...filteredExtraTabs];
 
   // Initialize active tab: first day with unlocked games, else first day
   const initialTabKey = (() => {
