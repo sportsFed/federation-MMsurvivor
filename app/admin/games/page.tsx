@@ -34,6 +34,7 @@ export default function AdminGamesPage() {
   const [editTimeInputs, setEditTimeInputs] = useState<Record<string, string>>({});
   const [editingTime, setEditingTime] = useState<string | null>(null);
   const [creatingR32, setCreatingR32] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
 
   function isoToDatetimeLocal(iso: string): string {
@@ -140,6 +141,26 @@ export default function AdminGamesPage() {
     }
     setTimeout(() => setActionMessage(''), 6000);
     setCreatingR32(false);
+  };
+
+  const handleResolveSkeletonGames = async () => {
+    setResolving(true);
+    setActionMessage('');
+    try {
+      const res = await fetch('/api/admin/resolve-skeleton-games', { method: 'POST', credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionMessage(`Error: ${data.error ?? 'Unknown error'}`);
+      } else {
+        setActionMessage(`Resolved: ${data.resolved} skeleton game(s). Skipped: ${data.skipped}. Errors: ${data.errors?.length ?? 0}`);
+        await fetchGames();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setActionMessage(`Network error: ${msg}`);
+    } finally {
+      setResolving(false);
+    }
   };
 
   const pendingGames = games.filter(g => !g.isComplete);
@@ -325,6 +346,24 @@ export default function AdminGamesPage() {
                   className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
                   {creatingR32 ? 'Creating…' : 'Create Round of 32 Skeleton Games'}
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-8 p-4 rounded-xl border border-slate-700/50 bg-slate-800/20">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-sm text-white font-semibold font-sans">Resolve Completed Matchups</p>
+                  <p className="text-xs text-slate-500 font-sans mt-0.5">
+                    Populates R32 skeleton game docs with team data from completed R64 games.
+                  </p>
+                </div>
+                <button
+                  onClick={handleResolveSkeletonGames}
+                  disabled={resolving}
+                  className="px-4 py-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  {resolving ? 'Resolving…' : 'Resolve Completed Matchups'}
                 </button>
               </div>
             </div>

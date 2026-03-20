@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { db } from '@/lib/firebase/adminApp';
 import { validateAdminSession } from '@/lib/adminAuth';
 import { scoreCompletedGame } from '@/lib/scoreGame';
+import { resolveSkeletonGames } from '@/lib/resolveSkeletonGames';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,6 +33,14 @@ export async function POST(request: NextRequest) {
 
     // Score entries and mark losing team as eliminated
     await scoreCompletedGame(gameId, winner, loserName, round, winnerSeed, loserSeed);
+
+    // Auto-resolve any R32 skeleton games whose upstream R64 games are now complete
+    try {
+      const resolveResult = await resolveSkeletonGames();
+      console.log('[set-game-winner] resolveSkeletonGames:', resolveResult);
+    } catch (resolveErr: unknown) {
+      console.warn('[set-game-winner] resolveSkeletonGames failed (non-fatal):', resolveErr);
+    }
 
     await db.collection('pickLog').add({
       action: 'admin_set_winner',
