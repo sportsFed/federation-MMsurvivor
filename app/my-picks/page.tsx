@@ -287,6 +287,7 @@ export default function MyPicksPage() {
   const gamePickCounts = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
     for (const entry of allEntries) {
+      if (entry.isEliminated) continue; // exclude eliminated entries
       for (const pick of (entry.survivorPicks ?? [])) {
         if (pick.isProjectionPick === true) continue;
         if (!pick.gameId || !pick.team) continue;
