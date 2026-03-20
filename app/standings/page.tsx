@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { db, auth } from '@/lib/firebase/clientApp';
-import { collection, query, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };
@@ -18,10 +18,20 @@ function getEasternDateKey(isoString: string): string {
   return new Date(isoString).toLocaleDateString('en-US', { timeZone: 'America/New_York' });
 }
 
-function getPickForDate(entry: any, dateKey: string, games: any[], now: Date): string {
+interface PickCellData {
+  team: string;
+  result: 'win' | 'loss' | undefined;
+}
+
+function getPickForDate(
+  entry: any,
+  dateKey: string,
+  games: any[],
+  now: Date
+): PickCellData | '🔒' | '—' {
   const picks: any[] = entry.survivorPicks ?? [];
   const pick = picks.find((p: any) => {
-    if (p.isProjectionPick) return false;
+    if (p.isProjectionPick === true) return false;
     if (p.dateKey === dateKey) return true;
     const g = games.find((g: any) => g.id === p.gameId);
     if (!g) return false;
@@ -32,7 +42,8 @@ function getPickForDate(entry: any, dateKey: string, games: any[], now: Date): s
   const game = games.find((g: any) => g.id === pick.gameId);
   const gameTime = game?.gameTime ?? game?.tipoff ?? game?.scheduledAt;
   const tipped = gameTime ? now >= new Date(gameTime) : (game?.isComplete ?? false);
-  return tipped ? pick.team : '🔒';
+  if (!tipped) return '🔒';
+  return { team: pick.team, result: pick.result as 'win' | 'loss' | undefined };
 }
 
 // Final Four column mapping: f1=East, f2=West, f3=South, f4=Midwest
@@ -53,13 +64,9 @@ export default function StandingsPage() {
   const [eliminatedTeamSet, setEliminatedTeamSet] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  // authReady becomes true once onAuthStateChanged has fired its first callback,
-  // guaranteeing the Firebase auth token is fully resolved before we open the
-  // Firestore snapshot listener. Without this gate, the listener can race
-  // against token initialisation and receive a permission error on first mount
-  // for logged-in users, even though the security rules allow public reads.
-  const [authReady, setAuthReady] = useState(false);
-  const [snapshotError, setSnapshotError] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const currentUserRowRef = useRef<HTMLTableRowElement | null>(null);
 
@@ -74,12 +81,10 @@ export default function StandingsPage() {
     }
   }, [currentUserId, entries]);
 
-  // Single onAuthStateChanged listener — sets both the current user ID for row
-  // highlighting AND the authReady gate so the snapshot effect can proceed.
+  // Single onAuthStateChanged listener — sets the current user ID for row highlighting.
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUserId(user?.uid ?? null);
-      setAuthReady(true);
     });
     return () => unsub();
   }, []);
@@ -105,32 +110,29 @@ export default function StandingsPage() {
     });
   }, []);
 
-  // Gate this effect on authReady so the Firestore listener is never opened
-  // until the Firebase auth token has fully resolved. This prevents the
-  // race condition where an authenticated user's token is not yet attached
-  // to the first request, causing Firestore to emit a permission error and
-  // permanently setting snapshotError = true with no retry path.
-  useEffect(() => {
-    if (!authReady) return;
-
-    // Remove orderBy to avoid composite index requirement; sort client-side instead
-    const q = query(collection(db, 'entries'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data: any[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      // Sort client-side by totalPoints descending
+  const fetchEntries = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const snap = await getDocs(collection(db, 'entries'));
+      const data: any[] = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const sorted = [...data].sort((a, b) => (b.totalPoints ?? 0) - (a.totalPoints ?? 0));
       setEntries(sorted);
+      setLoadError(false);
+      setLastRefreshed(new Date());
+    } catch (err: any) {
+      console.error('Standings load error:', err.code ?? err.message, err);
+      setLoadError(true);
+    } finally {
+      setRefreshing(false);
       setLoading(false);
-    }, (error) => {
-      console.error('Standings snapshot error:', error.code, error);
-      setSnapshotError(true);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [authReady]);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEntries();
+    const interval = setInterval(fetchEntries, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchEntries]);
 
   // Derive sorted unique date keys from real (non-skeleton) games
   const survivorDateKeys: string[] = gamesLoaded
@@ -165,8 +167,17 @@ export default function StandingsPage() {
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="font-sans font-bold text-3xl text-white mb-8 uppercase tracking-wide">Federation Leaderboard</h1>
-      {snapshotError ? (
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="font-sans font-bold text-3xl text-white uppercase tracking-wide">Federation Leaderboard</h1>
+        <button
+          onClick={fetchEntries}
+          disabled={refreshing}
+          className="text-xs text-slate-400 hover:text-white font-sans border border-slate-700 hover:border-slate-500 rounded px-2.5 py-1 transition disabled:opacity-40"
+        >
+          {refreshing ? 'Refreshing…' : '↻ Refresh'}
+        </button>
+      </div>
+      {loadError ? (
         <div className="glass-panel p-10 text-center border border-white/10">
           <p className="text-slate-400 text-sm">Unable to load standings at this time. Please try again later.</p>
         </div>
@@ -245,9 +256,31 @@ export default function StandingsPage() {
                     {/* Survivor pick columns — revealed per game tip-off time */}
                     {survivorDateKeys.map((dk) => {
                       const cellVal = gamesLoaded ? getPickForDate(entry, dk, games, now) : '🔒';
+                      if (cellVal === '🔒') {
+                        return (
+                          <td key={dk} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600 text-xs">
+                            🔒
+                          </td>
+                        );
+                      }
+                      if (cellVal === '—') {
+                        return (
+                          <td key={dk} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600">
+                            —
+                          </td>
+                        );
+                      }
+                      // Object: { team, result }
+                      const { team, result } = cellVal;
+                      const cellClass = result === 'win'
+                        ? 'text-green-400 bg-green-900/20'
+                        : result === 'loss'
+                        ? 'text-red-400 bg-red-900/20'
+                        : 'text-slate-300';
+                      const textClass = result === 'loss' ? 'line-through' : '';
                       return (
-                        <td key={dk} className={`py-1.5 px-2 whitespace-nowrap text-center ${cellVal === '🔒' ? 'text-slate-600 text-xs' : 'text-slate-300'}`}>
-                          {cellVal}
+                        <td key={dk} className={`py-1.5 px-2 whitespace-nowrap text-center ${cellClass}`}>
+                          <span className={textClass}>{team}</span>
                         </td>
                       );
                     })}

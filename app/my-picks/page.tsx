@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
@@ -202,6 +202,7 @@ export default function MyPicksPage() {
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
   const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
   const [firestoreTeams, setFirestoreTeams] = useState<TeamData[]>([]);
+  const [allEntries, setAllEntries] = useState<any[]>([]);
 
   const showMessage = (msg: string, ms = 5000) => {
     setPickMessage(msg);
@@ -218,15 +219,17 @@ export default function MyPicksPage() {
       if (user) {
         setUserId(user.uid);
         try {
-          const [entrySnap, gamesSnap, teamsSnap] = await Promise.all([
+          const [entrySnap, gamesSnap, teamsSnap, allEntriesSnap] = await Promise.all([
             getDoc(doc(db, 'entries', user.uid)),
             getDocs(collection(db, 'games')),
             getDocs(collection(db, 'teams')),
+            getDocs(collection(db, 'entries')),
           ]);
 
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
           setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           setFirestoreTeams(teamsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeamData)));
+          setAllEntries(allEntriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           // Build projection model
           const fw = getFramework();
           const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
@@ -271,6 +274,21 @@ export default function MyPicksPage() {
   const eliminatedTeamNames: string[] = firestoreTeams
     .filter((t: any) => t.isEliminated === true)
     .map((t: any) => t.name as string);
+
+  // Game-level pick distribution map: gameId -> { teamName -> count }
+  const gamePickCounts = useMemo(() => {
+    const map = new Map<string, Map<string, number>>();
+    for (const entry of allEntries) {
+      for (const pick of (entry.survivorPicks ?? [])) {
+        if (pick.isProjectionPick === true) continue;
+        if (!pick.gameId || !pick.team) continue;
+        if (!map.has(pick.gameId)) map.set(pick.gameId, new Map());
+        const teamMap = map.get(pick.gameId)!;
+        teamMap.set(pick.team, (teamMap.get(pick.team) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [allEntries]);
 
   // Helper: derive effective dateKey for a pick (backward compat for picks without dateKey)
   const getEffectivePickDateKey = (pick: any): string | null => {
@@ -552,7 +570,7 @@ export default function MyPicksPage() {
   // Pending picks (not yet scored), sorted chronologically by game time
   const gamesById = new Map(games.map((g: any) => [g.id, g]));
   const pendingPicks = (userEntry?.survivorPicks ?? [])
-    .filter((p: any) => p.result !== 'win' && p.result !== 'loss' && !p.isProjectionPick)
+    .filter((p: any) => p.result !== 'win' && p.result !== 'loss' && p.isProjectionPick !== true)
     .sort((a: any, b: any) => {
       const gameA = gamesById.get(a.gameId);
       const gameB = gamesById.get(b.gameId);
@@ -611,7 +629,10 @@ export default function MyPicksPage() {
       if (isEliteEight) {
         pickStatus = eliteEightPicks.length >= ELITE_EIGHT_REQUIRED_PICKS ? 'has-pick' : 'missing-pick';
       } else {
-        const hasPick = pendingPicks.some((p: any) => getEffectivePickDateKey(p) === dateKey);
+        const allSurvivorPicksForDate = (userEntry?.survivorPicks ?? []).filter(
+          (p: any) => p.isProjectionPick !== true && getEffectivePickDateKey(p) === dateKey
+        );
+        const hasPick = allSurvivorPicksForDate.length > 0;
         pickStatus = hasPick ? 'has-pick' : 'missing-pick';
       }
     }
@@ -1078,6 +1099,28 @@ export default function MyPicksPage() {
                   const gamePickEntry = (userEntry?.survivorPicks ?? []).find((p: any) => p.gameId === game.id);
                   const thisGamePickTeam = gamePickEntry?.team;
 
+                  const renderPickAnalytics = () => {
+                    const teamCounts = gamePickCounts.get(game.id);
+                    if (!teamCounts || teamCounts.size === 0) return null;
+                    const total = Array.from(teamCounts.values()).reduce((a, b) => a + b, 0);
+                    if (total === 0) return null;
+                    const teams = [game.homeTeam, game.awayTeam];
+                    return (
+                      <div className="mt-2 flex gap-2 text-[10px] font-sans text-slate-500 border-t border-slate-700/50 pt-2">
+                        {teams.map((team: string) => {
+                          const count = teamCounts.get(team) ?? 0;
+                          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                          return (
+                            <span key={team} className="flex-1 text-center">
+                              <span className="text-slate-400">{team}</span>
+                              <span className="ml-1 text-slate-500">{count} ({pct}%)</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    );
+                  };
+
                   // Compact collapsed card for completed games
                   if (game.isComplete && game.winner) {
                     const userPickedWinner = thisGamePickTeam === game.winner;
@@ -1119,6 +1162,7 @@ export default function MyPicksPage() {
                             )}
                           </div>
                         </div>
+                        {renderPickAnalytics()}
                       </div>
                     );
                   }
@@ -1192,6 +1236,8 @@ export default function MyPicksPage() {
                           );
                         })}
                       </div>
+                      {/* Pick analytics — only visible after tip-off */}
+                      {isLocked && renderPickAnalytics()}
                     </div>
                   );
                 })}
@@ -1234,12 +1280,21 @@ export default function MyPicksPage() {
                 })();
 
                 return (
-                  <div key={i} className="flex items-center justify-between bg-slate-800/30 rounded px-3 py-1.5 text-sm font-sans">
+                  <div key={i} className={`flex items-center justify-between rounded px-3 py-1.5 text-sm font-sans ${
+                    pick.result === 'win' ? 'bg-green-900/20' :
+                    pick.result === 'loss' ? 'bg-red-900/20' :
+                    'bg-slate-800/30'
+                  }`}>
                     <div className="flex flex-col">
                       <span className="text-slate-400 text-xs">{pick.round} · {pick.region}</span>
                       <span className="text-slate-500 text-[10px]">{dayLabel}</span>
                     </div>
-                    <span className={`font-medium ${isPickVoided ? 'text-red-400' : 'text-white'}`}>
+                    <span className={`font-medium ${
+                      isPickVoided ? 'text-red-400' :
+                      pick.result === 'win' ? 'text-green-400' :
+                      pick.result === 'loss' ? 'text-red-400 line-through' :
+                      'text-white'
+                    }`}>
                       {isPickVoided ? '⚠️ ' : ''}{pick.team}
                       {isPickVoided && <span className="ml-1 text-[10px] text-red-500 font-normal">Team eliminated</span>}
                     </span>
