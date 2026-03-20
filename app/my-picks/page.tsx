@@ -125,10 +125,10 @@ function ProjectionPickCard({
         onClick={() => canPick && onPickTeam(team.name, frameworkGame.id, frameworkGame.round, frameworkGame.region)}
         disabled={!canPick}
         className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left w-full ${
-          isSelected
-            ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-pointer hover:bg-green-700/60'
-            : isEliminated
+          isEliminated
             ? 'bg-slate-800/40 border border-slate-700/30 text-slate-600 cursor-not-allowed line-through'
+            : isSelected
+            ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-default'
             : isUsed
             ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
             : isLocked
@@ -138,10 +138,10 @@ function ProjectionPickCard({
       >
         <span className="text-[10px] text-slate-500 block mb-0.5">#{team.seed}</span>
         <span className="block leading-tight text-xs">{team.name}</span>
-        {isSelected && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
         {isEliminated && <span className="text-[10px] text-slate-600 mt-0.5 block">Eliminated</span>}
-        {isUsed && !isEliminated && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
-        {isLocked && !isSelected && !isUsed && !isEliminated && (
+        {!isEliminated && isSelected && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
+        {!isEliminated && isUsed && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
+        {!isEliminated && isLocked && !isSelected && !isUsed && (
           <span className="text-[10px] text-slate-600 mt-0.5 block">Locked</span>
         )}
       </button>
@@ -1112,6 +1112,8 @@ export default function MyPicksPage() {
                     if (!teamCounts || teamCounts.size === 0) return null;
                     const total = Array.from(teamCounts.values()).reduce((a, b) => a + b, 0);
                     if (total === 0) return null;
+                    // skeleton games do not have homeTeam/awayTeam fields
+                    if ((game as any).isSkeletonGame || !game.homeTeam || !game.awayTeam) return null;
                     const teams = [game.homeTeam, game.awayTeam];
                     return (
                       <div className="mt-2 flex gap-2 text-[10px] font-sans text-slate-500 border-t border-slate-700/50 pt-2">
@@ -1130,7 +1132,7 @@ export default function MyPicksPage() {
                   };
 
                   // Compact collapsed card for completed games
-                  if (game.isComplete && game.winner) {
+                  if (game.isComplete && game.winner && !(game as any).isSkeletonGame) {
                     const userPickedWinner = thisGamePickTeam === game.winner;
                     const userPickedLoser = thisGamePickTeam && thisGamePickTeam !== game.winner;
                     const winnerSeed = game.winner === game.homeTeam ? game.homeSeed : game.awaySeed;
