@@ -11,7 +11,7 @@ export interface ResolveSkeletonResult {
  * For each skeleton game (isSkeletonGame === true) in the games collection:
  * - Use its `bracketKey` field (e.g. "W-R32-G1") to look up the framework JSON
  * - Identify the two upstream participant game IDs (participants[0].gameId and participants[1].gameId)
- * - Look up those two upstream R64 Firestore game documents by their doc ID (which equals their bracketKey)
+ * - Look up those two upstream R64 Firestore game documents by querying the bracketKey field
  * - If both upstream games are complete and have winners, write homeTeam/homeSeed/awayTeam/awaySeed to the skeleton doc,
  *   and set isSkeletonGame: false
  * - If only one or neither upstream game is complete, skip (increment skipped)
@@ -49,19 +49,19 @@ export async function resolveSkeletonGames(): Promise<ResolveSkeletonResult> {
         const upstream0Id = p0.gameId; // e.g. "E-R64-G1"
         const upstream1Id = p1.gameId; // e.g. "E-R64-G2"
 
-        // Look up both upstream R64 game docs by their bracketKey doc ID
-        const [snap0, snap1] = await Promise.all([
-          db.collection('games').doc(upstream0Id).get(),
-          db.collection('games').doc(upstream1Id).get(),
+        // Look up both upstream R64 game docs by their bracketKey field
+        const [q0, q1] = await Promise.all([
+          db.collection('games').where('bracketKey', '==', upstream0Id).limit(1).get(),
+          db.collection('games').where('bracketKey', '==', upstream1Id).limit(1).get(),
         ]);
 
-        if (!snap0.exists || !snap1.exists) {
+        if (q0.empty || q1.empty) {
           skipped++;
           continue;
         }
 
-        const d0 = snap0.data()!;
-        const d1 = snap1.data()!;
+        const d0 = q0.docs[0].data();
+        const d1 = q1.docs[0].data();
 
         if (!d0.isComplete || !d0.winner || !d1.isComplete || !d1.winner) {
           // Upstream games not yet complete
