@@ -233,8 +233,9 @@ export default function MyPicksPage() {
           try {
             const allEntriesSnap = await getDocs(collection(db, 'entries'));
             setAllEntries(allEntriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-          } catch {
+          } catch (err) {
             // Fail silently — pick analytics banner simply won't show
+            console.warn('Could not load all entries (pick analytics unavailable):', err);
           }
 
           // Build projection model
