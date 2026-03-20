@@ -43,6 +43,10 @@ function getPickForDate(
   const gameTime = game?.gameTime ?? game?.tipoff ?? game?.scheduledAt;
   const tipped = gameTime ? now >= new Date(gameTime) : (game?.isComplete ?? false);
   if (!tipped) return '🔒';
+  // For eliminated entrants, hide unscored picks — they will never be scored
+  if (entry.isEliminated && pick.result !== 'win' && pick.result !== 'loss') {
+    return '—';
+  }
   return { team: pick.team, result: pick.result as 'win' | 'loss' | undefined };
 }
 
