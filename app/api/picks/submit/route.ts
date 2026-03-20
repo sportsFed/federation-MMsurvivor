@@ -72,7 +72,9 @@ export async function POST(request: NextRequest) {
     const duplicatePick = existingPicks.find(
       (p: any) =>
         p.team === team &&
-        !(p.dateKey === dateKey && (isProjectionPick ? p.isProjectionPick : !p.isProjectionPick))
+        // Not a duplicate when same dateKey and same pick type (updating own pick),
+        // or when confirming a projection pick with a real confirmed pick
+        !(p.dateKey === dateKey && (p.isProjectionPick || !isProjectionPick))
     );
 
     if (duplicatePick) {
@@ -115,16 +117,25 @@ export async function POST(request: NextRequest) {
         action = 'submitted';
       }
     } else {
-      // Standard pick: replace any existing pick for the same dateKey
-      const hasPickForThisDate = existingPicks.some(
+      // Standard (confirmed) pick: replace any existing pick for the same dateKey,
+      // including a projection pick that is being upgraded to a confirmed pick
+      const existingConfirmedForDate = existingPicks.find(
         (p: any) => p.dateKey === dateKey && !p.isProjectionPick
       );
-      if (hasPickForThisDate) {
-        previousTeam = existingPicks.find(
-          (p: any) => p.dateKey === dateKey && !p.isProjectionPick
-        )?.team ?? null;
+      const existingProjectionForDate = existingPicks.find(
+        (p: any) => p.dateKey === dateKey && p.isProjectionPick
+      );
+      if (existingConfirmedForDate) {
+        previousTeam = existingConfirmedForDate.team ?? null;
         updatedPicks = existingPicks.map((p: any) =>
           p.dateKey === dateKey && !p.isProjectionPick ? newPickEntry : p
+        );
+        action = 'changed';
+      } else if (existingProjectionForDate) {
+        // Replace the projection pick in-place with the confirmed pick
+        previousTeam = existingProjectionForDate.team ?? null;
+        updatedPicks = existingPicks.map((p: any) =>
+          p.dateKey === dateKey && p.isProjectionPick ? newPickEntry : p
         );
         action = 'changed';
       } else {
