@@ -219,17 +219,24 @@ export default function MyPicksPage() {
       if (user) {
         setUserId(user.uid);
         try {
-          const [entrySnap, gamesSnap, teamsSnap, allEntriesSnap] = await Promise.all([
+          const [entrySnap, gamesSnap, teamsSnap] = await Promise.all([
             getDoc(doc(db, 'entries', user.uid)),
             getDocs(collection(db, 'games')),
             getDocs(collection(db, 'teams')),
-            getDocs(collection(db, 'entries')),
           ]);
 
           if (entrySnap.exists()) setUserEntry(entrySnap.data());
           setGames(gamesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           setFirestoreTeams(teamsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeamData)));
-          setAllEntries(allEntriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+          // Fetch all entries independently — failure must NOT affect core data
+          try {
+            const allEntriesSnap = await getDocs(collection(db, 'entries'));
+            setAllEntries(allEntriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          } catch {
+            // Fail silently — pick analytics banner simply won't show
+          }
+
           // Build projection model
           const fw = getFramework();
           const teamsByRegionSeed = buildTeamsByRegionSeed(fw);
