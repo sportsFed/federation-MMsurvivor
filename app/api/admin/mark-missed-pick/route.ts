@@ -47,10 +47,10 @@ export async function POST(request: NextRequest) {
 
     for (const entryDoc of activeSnap.docs) {
       const entry = entryDoc.data();
-      const survivorPicks: Array<{ gameId?: string }> = entry.survivorPicks ?? [];
+      const survivorPicks: Array<{ gameId?: string; isProjectionPick?: boolean }> = entry.survivorPicks ?? [];
 
       const hasPick = survivorPicks.some(
-        (p) => typeof p.gameId === 'string' && gameIdsForDate.has(p.gameId),
+        (p) => typeof p.gameId === 'string' && gameIdsForDate.has(p.gameId) && p.isProjectionPick !== true,
       );
 
       if (!hasPick) {
