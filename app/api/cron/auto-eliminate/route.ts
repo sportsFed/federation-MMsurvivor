@@ -61,7 +61,7 @@ export async function GET(request: Request) {
         const survivorPicks: any[] = entry.survivorPicks ?? [];
 
         // Check if this entry has at least one pick for a game on this date
-        const hasPick = survivorPicks.some((p: any) => p.gameId && gameIdsForDate.has(p.gameId));
+        const hasPick = survivorPicks.some((p: any) => p.gameId && gameIdsForDate.has(p.gameId) && p.isProjectionPick !== true);
 
         if (!hasPick) {
           // Eliminate the entry — missed picks earn seed ÷ 100 consolation; seed is undefined so consolation = 0 by definition
