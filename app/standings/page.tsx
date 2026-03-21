@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -57,6 +57,38 @@ const FF_REGIONS = [
   { key: 'f3', label: 'South' },
   { key: 'f4', label: 'Midwest' },
 ] as const;
+
+// Background hex values include a '15' low-opacity suffix; ELIMINATED_ALPHA is appended to
+// text color for eliminated teams to achieve ~45% opacity.
+const TEAM_COLORS: Record<string, { bg: string; text: string }> = {
+  'Duke':            { bg: '#00356B15', text: '#4A90D9' },
+  'UConn':           { bg: '#00205B15', text: '#4B6CB7' },
+  'Michigan St.':    { bg: '#18453B15', text: '#4CAF82' },
+  "St. John's (NY)": { bg: '#CC000015', text: '#FF6B6B' },
+  'UCLA':            { bg: '#2D68C415', text: '#5B8FD9' },
+  'Kansas':          { bg: '#0051A515', text: '#4A7FD4' },
+  'TCU':             { bg: '#4D114415', text: '#9B59B6' },
+  'Louisville':      { bg: '#AD000015', text: '#FF6B6B' },
+  'Arizona':         { bg: '#CC000015', text: '#FF6B6B' },
+  'Wisconsin':       { bg: '#C5050C15', text: '#FF6B6B' },
+  'Arkansas':        { bg: '#9D205115', text: '#E07BA0' },
+  'Miami (FL)':      { bg: '#F5A62315', text: '#F5A623' },
+  'Gonzaga':         { bg: '#002F6C15', text: '#4B7FD4' },
+  'Purdue':          { bg: '#CEB88815', text: '#D4AF6B' },
+  'Houston':         { bg: '#C8102E15', text: '#FF6B6B' },
+  'Florida':         { bg: '#0021A515', text: '#4A7FD4' },
+  'Vanderbilt':      { bg: '#866D4B15', text: '#B8956B' },
+  'Illinois':        { bg: '#E84A2715', text: '#FF7B5B' },
+  'Nebraska':        { bg: '#E41C2315', text: '#FF6B6B' },
+  'Iowa St.':        { bg: '#C8102E15', text: '#FF6B6B' },
+  'Virginia':        { bg: '#232D4B15', text: '#6B7FD4' },
+  'Michigan':        { bg: '#00274C15', text: '#4A7FD4' },
+  'Texas Tech':      { bg: '#CC000015', text: '#FF6B6B' },
+  'Tennessee':       { bg: '#FF800015', text: '#FFB366' },
+  'Alabama':         { bg: '#9E1B3215', text: '#E06B8B' },
+};
+
+const ELIMINATED_ALPHA = '73'; // ~45% opacity suffix appended to team text color hex
 
 const STICKY_RANK_CLS = 'py-1.5 px-2 whitespace-nowrap sticky left-0 z-10 bg-[#0b1120]';
 const STICKY_NAME_CLS = 'py-1.5 px-2 whitespace-nowrap sticky left-10 z-10 bg-[#0b1120]';
@@ -153,6 +185,12 @@ export default function StandingsPage() {
       ).sort() as string[])
     : [];
 
+  const todayDateKey: string | null = gamesLoaded
+    ? (survivorDateKeys.find(dk => dk === getEasternDateKey(now.toISOString())) ?? null)
+    : null;
+
+  const historicalDateKeys = survivorDateKeys.filter(dk => dk !== todayDateKey);
+
   if (loading) {
     return (
       <div className="p-8 max-w-5xl mx-auto animate-pulse">
@@ -201,12 +239,12 @@ export default function StandingsPage() {
                 <th className={`${STICKY_NAME_CLS} text-[10px] uppercase tracking-widest text-slate-400 font-sans`}>Entrant</th>
                 <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-right">Pts</th>
                 <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">Status</th>
-                {/* Survivor pick columns — one per unique tournament date */}
-                {survivorDateKeys.map((dk) => (
-                  <th key={dk} className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">
-                    {dk}
+                {/* Today's survivor pick column */}
+                {todayDateKey !== null && (
+                  <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-300 font-sans text-center">
+                    Today
                   </th>
-                ))}
+                )}
                 {/* Final Four columns — one per region; lock applies to ALL entrants until deadline */}
                 {FF_REGIONS.map((r) => (
                   <th key={r.key} className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">
@@ -215,6 +253,12 @@ export default function StandingsPage() {
                 ))}
                 {/* National champion column — same lock rule as Final Four */}
                 <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">Natty</th>
+                {/* Historical survivor pick columns — de-emphasized */}
+                {historicalDateKeys.map((dk) => (
+                  <th key={dk} className="py-1.5 px-2 whitespace-nowrap text-[9px] uppercase tracking-widest text-slate-600 font-sans text-center">
+                    {dk}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -257,47 +301,61 @@ export default function StandingsPage() {
                         <span className="text-green-400 bg-green-900/30 border border-green-500/30 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">Active</span>
                       )}
                     </td>
-                    {/* Survivor pick columns — revealed per game tip-off time */}
-                    {survivorDateKeys.map((dk) => {
-                      const cellVal = gamesLoaded ? getPickForDate(entry, dk, games, now) : '🔒';
+                    {/* Today's survivor pick cell */}
+                    {todayDateKey !== null && (() => {
+                      const cellVal = gamesLoaded ? getPickForDate(entry, todayDateKey, games, now) : '🔒';
                       if (cellVal === '🔒') {
                         return (
-                          <td key={dk} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600 text-xs">
+                          <td className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600 text-xs">
                             🔒
                           </td>
                         );
                       }
                       if (cellVal === '—') {
                         return (
-                          <td key={dk} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600">
+                          <td className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600">
                             —
                           </td>
                         );
                       }
-                      // Object: { team, result }
                       const { team, result } = cellVal;
                       const cellClass = result === 'win'
                         ? 'text-green-400 bg-green-900/20'
                         : result === 'loss'
                         ? 'text-red-400 bg-red-900/20'
-                        : 'text-slate-300';
+                        : 'text-slate-300 bg-slate-700/20';
                       const textClass = result === 'loss' ? 'line-through' : '';
                       return (
-                        <td key={dk} className={`py-1.5 px-2 whitespace-nowrap text-center ${cellClass}`}>
+                        <td className={`py-1.5 px-2 whitespace-nowrap text-center ${cellClass}`}>
                           <span className={textClass}>{team}</span>
                         </td>
                       );
-                    })}
+                    })()}
                     {/* Final Four columns — lock emoji applies universally to ALL entrants (including current user)
                         until the deadline passes. No exceptions in the standings view. */}
                     {FF_REGIONS.map((r) => {
                       const teamName = entry.finalFourPicks?.[r.key];
-                      const isEliminated = deadlinePassed && teamName && eliminatedTeamSet.has(teamName);
+                      const isTeamEliminated = deadlinePassed && teamName && eliminatedTeamSet.has(teamName);
+                      const brand = deadlinePassed && teamName ? TEAM_COLORS[teamName] : undefined;
+                      const tdStyle: React.CSSProperties = brand
+                        ? {
+                            backgroundColor: brand.bg,
+                            color: isTeamEliminated ? brand.text + ELIMINATED_ALPHA : brand.text,
+                          }
+                        : {};
                       return (
-                        <td key={r.key} className={`py-1.5 px-2 whitespace-nowrap text-center ${deadlinePassed ? 'text-slate-300' : 'text-slate-600 text-xs'}`}>
+                        <td
+                          key={r.key}
+                          style={tdStyle}
+                          className={`py-1.5 px-2 whitespace-nowrap text-center ${
+                            deadlinePassed
+                              ? (brand ? '' : 'text-slate-300')
+                              : 'text-slate-600 text-xs'
+                          }`}
+                        >
                           {deadlinePassed
-                            ? (isEliminated
-                              ? <span style={{ textDecoration: 'line-through' }} className="text-slate-500">{teamName}</span>
+                            ? (isTeamEliminated
+                              ? <span style={{ textDecoration: 'line-through' }}>{teamName}</span>
                               : (teamName ?? '—'))
                             : '🔒'}
                         </td>
@@ -306,17 +364,61 @@ export default function StandingsPage() {
                     {/* Natty — same lock rule as Final Four */}
                     {(() => {
                       const champName = entry.finalFourPicks?.champ;
-                      const isEliminated = deadlinePassed && champName && eliminatedTeamSet.has(champName);
+                      const isChampEliminated = deadlinePassed && champName && eliminatedTeamSet.has(champName);
+                      const brand = deadlinePassed && champName ? TEAM_COLORS[champName] : undefined;
+                      const tdStyle: React.CSSProperties = brand
+                        ? {
+                            backgroundColor: brand.bg,
+                            color: isChampEliminated ? brand.text + ELIMINATED_ALPHA : brand.text,
+                          }
+                        : {};
                       return (
-                        <td className={`py-1.5 px-2 whitespace-nowrap text-center ${deadlinePassed ? 'text-slate-300 font-semibold' : 'text-slate-600 text-xs'}`}>
+                        <td
+                          style={tdStyle}
+                          className={`py-1.5 px-2 whitespace-nowrap text-center font-semibold ${
+                            deadlinePassed
+                              ? (brand ? '' : 'text-slate-300')
+                              : 'text-slate-600 text-xs'
+                          }`}
+                        >
                           {deadlinePassed
-                            ? (isEliminated
-                              ? <span style={{ textDecoration: 'line-through' }} className="text-slate-500">{champName}</span>
+                            ? (isChampEliminated
+                              ? <span style={{ textDecoration: 'line-through' }}>{champName}</span>
                               : (champName ?? '—'))
                             : '🔒'}
                         </td>
                       );
                     })()}
+                    {/* Historical survivor pick columns — de-emphasized */}
+                    {historicalDateKeys.map((dk) => {
+                      const cellVal = gamesLoaded ? getPickForDate(entry, dk, games, now) : '🔒';
+                      if (cellVal === '🔒') {
+                        return (
+                          <td key={dk} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-700 text-[10px]">
+                            🔒
+                          </td>
+                        );
+                      }
+                      if (cellVal === '—') {
+                        return (
+                          <td key={dk} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-700 text-[10px]">
+                            —
+                          </td>
+                        );
+                      }
+                      const { team, result } = cellVal;
+                      const cellClass = result === 'win'
+                        ? 'text-green-600'
+                        : result === 'loss'
+                        ? 'text-red-600'
+                        : 'text-slate-500';
+                      const textClass = result === 'loss' ? 'line-through' : '';
+                      return (
+                        <td key={dk} className={`py-1.5 px-2 whitespace-nowrap text-center text-[10px] ${cellClass}`}>
+                          <span className={textClass}>{team}</span>
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}
