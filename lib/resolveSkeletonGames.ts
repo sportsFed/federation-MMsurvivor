@@ -1,6 +1,18 @@
 import { db } from '@/lib/firebase/adminApp';
 import { getFrameworkGame } from '@/lib/bracket/framework';
 
+/**
+ * Look up a Firestore game document directly by its document ID (bracketKey).
+ * S16 games (and later rounds) use their bracketKey as the Firestore document ID.
+ * Returns the document data if found, or null if the document does not exist.
+ */
+async function lookupGameDocById(
+  gameId: string,
+): Promise<FirebaseFirestore.DocumentData | null> {
+  const doc = await db.collection('games').doc(gameId).get();
+  return doc.data() ?? null;
+}
+
 export interface ResolveSkeletonResult {
   resolved: number;
   skipped: number;
@@ -75,6 +87,49 @@ export async function resolveSkeletonGames(): Promise<ResolveSkeletonResult> {
         const data = skeletonDoc.data();
         const bracketKey: string = data.bracketKey ?? skeletonDoc.id;
 
+        // ── Path A: E8 skeletons — participants stored directly on the Firestore doc ──
+        if (
+          Array.isArray(data.participants) &&
+          data.participants.length === 2 &&
+          data.participants[0].type === 'winnerOf' &&
+          data.participants[1].type === 'winnerOf'
+        ) {
+          const upstream0Id: string = data.participants[0].gameId;
+          const upstream1Id: string = data.participants[1].gameId;
+
+          // S16 games use bracketKey as Firestore doc ID — direct lookup
+          let [d0, d1] = await Promise.all([
+            lookupGameDocById(upstream0Id),
+            lookupGameDocById(upstream1Id),
+          ]);
+
+          // Fall back to region+seed query if direct lookup misses (handles any edge case)
+          if (!d0) d0 = await lookupR64GameDoc(upstream0Id);
+          if (!d1) d1 = await lookupR64GameDoc(upstream1Id);
+
+          if (!d0 || !d1 || !d0.isComplete || !d0.winner || !d1.isComplete || !d1.winner) {
+            skipped++;
+            continue;
+          }
+
+          const homeTeam: string = d0.winner;
+          const homeSeed: number = d0.homeTeam === d0.winner ? (d0.homeSeed ?? 0) : (d0.awaySeed ?? 0);
+          const awayTeam: string = d1.winner;
+          const awaySeed: number = d1.homeTeam === d1.winner ? (d1.homeSeed ?? 0) : (d1.awaySeed ?? 0);
+
+          await db.collection('games').doc(skeletonDoc.id).update({
+            homeTeam,
+            homeSeed,
+            awayTeam,
+            awaySeed,
+            isSkeletonGame: false,
+          });
+
+          resolved++;
+          continue; // do not fall through to Path B
+        }
+
+        // ── Path B: R32 skeletons — existing getFrameworkGame + lookupR64GameDoc logic ──
         // Look up the framework game to get participant game IDs
         const fwGame = getFrameworkGame(bracketKey);
         if (!fwGame) {

@@ -34,6 +34,8 @@ export default function AdminGamesPage() {
   const [editTimeInputs, setEditTimeInputs] = useState<Record<string, string>>({});
   const [editingTime, setEditingTime] = useState<string | null>(null);
   const [creatingR32, setCreatingR32] = useState(false);
+  const [creatingS16, setCreatingS16] = useState(false);
+  const [creatingE8, setCreatingE8] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
 
@@ -161,6 +163,44 @@ export default function AdminGamesPage() {
     } finally {
       setResolving(false);
     }
+  };
+
+  const handleCreateS16Games = async () => {
+    setCreatingS16(true);
+    try {
+      const res = await fetch('/api/admin/create-s16-skeleton', { method: 'POST' });
+      if (res.ok) {
+        const { created, skipped } = await res.json();
+        setActionMessage(`Created ${created} Sweet 16 game${created !== 1 ? 's' : ''} (${skipped} already existed — skipped)`);
+        fetchGames();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionMessage(`Error: ${data.error ?? 'Unknown error'}`);
+      }
+    } catch {
+      setActionMessage('Error creating Sweet 16 games.');
+    }
+    setTimeout(() => setActionMessage(''), 6000);
+    setCreatingS16(false);
+  };
+
+  const handleCreateE8Skeleton = async () => {
+    setCreatingE8(true);
+    try {
+      const res = await fetch('/api/admin/create-e8-skeleton', { method: 'POST' });
+      if (res.ok) {
+        const { created, skipped } = await res.json();
+        setActionMessage(`Created ${created} Elite Eight skeleton${created !== 1 ? 's' : ''} (${skipped} already existed — skipped)`);
+        fetchGames();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionMessage(`Error: ${data.error ?? 'Unknown error'}`);
+      }
+    } catch {
+      setActionMessage('Error creating Elite Eight skeletons.');
+    }
+    setTimeout(() => setActionMessage(''), 6000);
+    setCreatingE8(false);
   };
 
   const pendingGames = games.filter(g => !g.isComplete);
@@ -364,6 +404,46 @@ export default function AdminGamesPage() {
                   className="px-4 py-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
                 >
                   {resolving ? 'Resolving…' : 'Resolve Completed Matchups'}
+                </button>
+              </div>
+            </div>
+
+            {/* Create Sweet 16 Games */}
+            <div className="mb-8 p-4 rounded-xl border border-slate-700/50 bg-slate-800/20">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-sm text-white font-semibold font-sans">Sweet 16 Games</p>
+                  <p className="text-xs text-slate-500 font-sans mt-0.5">
+                    Creates 8 Sweet Sixteen game docs with confirmed matchups and tip times.
+                  </p>
+                  <p className="text-[11px] text-green-500/70 font-sans mt-1">✓ This action is safe — it will never overwrite existing games.</p>
+                </div>
+                <button
+                  onClick={handleCreateS16Games}
+                  disabled={creatingS16}
+                  className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {creatingS16 ? 'Creating…' : 'Create Sweet 16 Games'}
+                </button>
+              </div>
+            </div>
+
+            {/* Create Elite Eight Skeleton Games */}
+            <div className="mb-8 p-4 rounded-xl border border-slate-700/50 bg-slate-800/20">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-sm text-white font-semibold font-sans">Elite Eight Skeleton Games</p>
+                  <p className="text-xs text-slate-500 font-sans mt-0.5">
+                    Creates 4 placeholder Elite Eight game docs. Teams will be populated automatically when S16 results are set.
+                  </p>
+                  <p className="text-[11px] text-green-500/70 font-sans mt-1">✓ This action is safe — it will never overwrite existing games.</p>
+                </div>
+                <button
+                  onClick={handleCreateE8Skeleton}
+                  disabled={creatingE8}
+                  className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {creatingE8 ? 'Creating…' : 'Create Elite Eight Skeletons'}
                 </button>
               </div>
             </div>
