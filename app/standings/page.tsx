@@ -58,37 +58,33 @@ const FF_REGIONS = [
   { key: 'f4', label: 'Midwest' },
 ] as const;
 
-// Background hex values include a '15' low-opacity suffix; ELIMINATED_ALPHA is appended to
-// text color for eliminated teams to achieve ~45% opacity.
-const TEAM_COLORS: Record<string, { bg: string; text: string }> = {
-  'Duke':            { bg: '#00356B15', text: '#4A90D9' },
-  'UConn':           { bg: '#00205B15', text: '#4B6CB7' },
-  'Michigan St.':    { bg: '#18453B15', text: '#4CAF82' },
-  "St. John's (NY)": { bg: '#CC000015', text: '#FF6B6B' },
-  'UCLA':            { bg: '#2D68C415', text: '#5B8FD9' },
-  'Kansas':          { bg: '#0051A515', text: '#4A7FD4' },
-  'TCU':             { bg: '#4D114415', text: '#9B59B6' },
-  'Louisville':      { bg: '#AD000015', text: '#FF6B6B' },
-  'Arizona':         { bg: '#CC000015', text: '#FF6B6B' },
-  'Wisconsin':       { bg: '#C5050C15', text: '#FF6B6B' },
-  'Arkansas':        { bg: '#9D205115', text: '#E07BA0' },
-  'Miami (FL)':      { bg: '#F5A62315', text: '#F5A623' },
-  'Gonzaga':         { bg: '#002F6C15', text: '#4B7FD4' },
-  'Purdue':          { bg: '#CEB88815', text: '#D4AF6B' },
-  'Houston':         { bg: '#C8102E15', text: '#FF6B6B' },
-  'Florida':         { bg: '#0021A515', text: '#4A7FD4' },
-  'Vanderbilt':      { bg: '#866D4B15', text: '#B8956B' },
-  'Illinois':        { bg: '#E84A2715', text: '#FF7B5B' },
-  'Nebraska':        { bg: '#E41C2315', text: '#FF6B6B' },
-  'Iowa St.':        { bg: '#C8102E15', text: '#FF6B6B' },
-  'Virginia':        { bg: '#232D4B15', text: '#6B7FD4' },
-  'Michigan':        { bg: '#00274C15', text: '#4A7FD4' },
-  'Texas Tech':      { bg: '#CC000015', text: '#FF6B6B' },
-  'Tennessee':       { bg: '#FF800015', text: '#FFB366' },
-  'Alabama':         { bg: '#9E1B3215', text: '#E06B8B' },
+const TEAM_LOGOS: Record<string, string> = {
+  'Alabama':         '/logos/alabama.png',
+  'Arizona':         '/logos/arizona.png',
+  'Arkansas':        '/logos/arkansas.png',
+  'Duke':            '/logos/duke.png',
+  'Florida':         '/logos/florida.png',
+  'Gonzaga':         '/logos/gonzaga.png',
+  'Houston':         '/logos/houston.png',
+  'Illinois':        '/logos/illinois.png',
+  'Iowa St.':        '/logos/iowa-state.png',
+  'Kansas':          '/logos/kansas.png',
+  'Louisville':      '/logos/louisville.png',
+  'Miami (FL)':      '/logos/miami-fl.png',
+  'Michigan St.':    '/logos/michigan-state.png',
+  'Michigan':        '/logos/michigan.png',
+  'Nebraska':        '/logos/nebraska.png',
+  'Purdue':          '/logos/purdue.png',
+  "St. John's (NY)": '/logos/st-johns.png',
+  'TCU':             '/logos/tcu.png',
+  'Tennessee':       '/logos/tennessee.png',
+  'Texas Tech':      '/logos/texas-tech.png',
+  'UCLA':            '/logos/ucla.png',
+  'UConn':           '/logos/uconn.png',
+  'Vanderbilt':      '/logos/vanderbilt.png',
+  'Virginia':        '/logos/virginia.png',
+  'Wisconsin':       '/logos/wisconsin.png',
 };
-
-const ELIMINATED_ALPHA = '73'; // ~45% opacity suffix appended to team text color hex
 
 const STICKY_RANK_CLS = 'py-1.5 px-2 whitespace-nowrap sticky left-0 z-10 bg-[#0b1120]';
 const STICKY_NAME_CLS = 'py-1.5 px-2 whitespace-nowrap sticky left-10 z-10 bg-[#0b1120]';
@@ -336,28 +332,34 @@ export default function StandingsPage() {
                     {FF_REGIONS.map((r) => {
                       const teamName = entry.finalFourPicks?.[r.key];
                       const isTeamEliminated = deadlinePassed && teamName && eliminatedTeamSet.has(teamName);
-                      const brand = deadlinePassed && teamName ? TEAM_COLORS[teamName] : undefined;
-                      const tdStyle: React.CSSProperties = brand
-                        ? {
-                            backgroundColor: brand.bg,
-                            color: isTeamEliminated ? brand.text + ELIMINATED_ALPHA : brand.text,
-                          }
-                        : {};
                       return (
                         <td
                           key={r.key}
-                          style={tdStyle}
-                          className={`py-1.5 px-2 whitespace-nowrap text-center ${
-                            deadlinePassed
-                              ? (brand ? '' : 'text-slate-300')
-                              : 'text-slate-600 text-xs'
-                          }`}
+                          className={`py-1.5 px-2 whitespace-nowrap text-center ${!deadlinePassed ? 'text-slate-600 text-xs' : ''}`}
                         >
-                          {deadlinePassed
-                            ? (isTeamEliminated
+                          {!deadlinePassed
+                            ? '🔒'
+                            : !teamName
+                            ? '—'
+                            : TEAM_LOGOS[teamName]
+                            ? (
+                              <img
+                                src={TEAM_LOGOS[teamName]}
+                                alt={teamName}
+                                title={teamName}
+                                style={{
+                                  width: 20,
+                                  height: 20,
+                                  borderRadius: '50%',
+                                  objectFit: 'cover',
+                                  display: 'inline-block',
+                                  ...(isTeamEliminated ? { opacity: 0.4, filter: 'grayscale(60%)' } : {}),
+                                }}
+                              />
+                            )
+                            : (isTeamEliminated
                               ? <span style={{ textDecoration: 'line-through' }}>{teamName}</span>
-                              : (teamName ?? '—'))
-                            : '🔒'}
+                              : teamName)}
                         </td>
                       );
                     })}
@@ -365,27 +367,33 @@ export default function StandingsPage() {
                     {(() => {
                       const champName = entry.finalFourPicks?.champ;
                       const isChampEliminated = deadlinePassed && champName && eliminatedTeamSet.has(champName);
-                      const brand = deadlinePassed && champName ? TEAM_COLORS[champName] : undefined;
-                      const tdStyle: React.CSSProperties = brand
-                        ? {
-                            backgroundColor: brand.bg,
-                            color: isChampEliminated ? brand.text + ELIMINATED_ALPHA : brand.text,
-                          }
-                        : {};
                       return (
                         <td
-                          style={tdStyle}
-                          className={`py-1.5 px-2 whitespace-nowrap text-center font-semibold ${
-                            deadlinePassed
-                              ? (brand ? '' : 'text-slate-300')
-                              : 'text-slate-600 text-xs'
-                          }`}
+                          className={`py-1.5 px-2 whitespace-nowrap text-center font-semibold ${!deadlinePassed ? 'text-slate-600 text-xs' : ''}`}
                         >
-                          {deadlinePassed
-                            ? (isChampEliminated
+                          {!deadlinePassed
+                            ? '🔒'
+                            : !champName
+                            ? '—'
+                            : TEAM_LOGOS[champName]
+                            ? (
+                              <img
+                                src={TEAM_LOGOS[champName]}
+                                alt={champName}
+                                title={champName}
+                                style={{
+                                  width: 20,
+                                  height: 20,
+                                  borderRadius: '50%',
+                                  objectFit: 'cover',
+                                  display: 'inline-block',
+                                  ...(isChampEliminated ? { opacity: 0.4, filter: 'grayscale(60%)' } : {}),
+                                }}
+                              />
+                            )
+                            : (isChampEliminated
                               ? <span style={{ textDecoration: 'line-through' }}>{champName}</span>
-                              : (champName ?? '—'))
-                            : '🔒'}
+                              : champName)}
                         </td>
                       );
                     })()}

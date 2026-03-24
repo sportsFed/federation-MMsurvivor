@@ -14,6 +14,34 @@ const SLOT_REGIONS: Record<string, string> = {
 
 const FINAL_FOUR_DEADLINE = new Date('2026-03-19T16:15:00Z');
 
+const TEAM_LOGOS: Record<string, string> = {
+  'Alabama':         '/logos/alabama.png',
+  'Arizona':         '/logos/arizona.png',
+  'Arkansas':        '/logos/arkansas.png',
+  'Duke':            '/logos/duke.png',
+  'Florida':         '/logos/florida.png',
+  'Gonzaga':         '/logos/gonzaga.png',
+  'Houston':         '/logos/houston.png',
+  'Illinois':        '/logos/illinois.png',
+  'Iowa St.':        '/logos/iowa-state.png',
+  'Kansas':          '/logos/kansas.png',
+  'Louisville':      '/logos/louisville.png',
+  'Miami (FL)':      '/logos/miami-fl.png',
+  'Michigan St.':    '/logos/michigan-state.png',
+  'Michigan':        '/logos/michigan.png',
+  'Nebraska':        '/logos/nebraska.png',
+  'Purdue':          '/logos/purdue.png',
+  "St. John's (NY)": '/logos/st-johns.png',
+  'TCU':             '/logos/tcu.png',
+  'Tennessee':       '/logos/tennessee.png',
+  'Texas Tech':      '/logos/texas-tech.png',
+  'UCLA':            '/logos/ucla.png',
+  'UConn':           '/logos/uconn.png',
+  'Vanderbilt':      '/logos/vanderbilt.png',
+  'Virginia':        '/logos/virginia.png',
+  'Wisconsin':       '/logos/wisconsin.png',
+};
+
 function formatCountdown(isoString: string, now: Date): string | null {
   const target = new Date(isoString);
   const diff = target.getTime() - now.getTime();
@@ -124,8 +152,6 @@ export default function FinalFourPage() {
         {(['f1', 'f2', 'f3', 'f4'] as const).map((slot) => {
           const region = SLOT_REGIONS[slot];
           const regionTeams = teamsForRegion(region);
-          const pickedTeam = teams.find((t) => t.name === picks[slot]);
-          const isPickEliminated = effectiveLocked && pickedTeam?.isEliminated === true;
           return (
             <div key={slot} className="glass-panel p-5 border border-slate-700">
               <label className="block font-sans font-semibold text-sm text-fedRed uppercase tracking-wider mb-3">
@@ -144,11 +170,37 @@ export default function FinalFourPage() {
                   </option>
                 ))}
               </select>
-              {isPickEliminated && (
-                <p className="mt-1 text-xs text-slate-500 font-sans">
-                  <span style={{ textDecoration: 'line-through' }}>{picks[slot]}</span> ❌ Eliminated
-                </p>
-              )}
+              {effectiveLocked && picks[slot] && (() => {
+                const teamName = picks[slot];
+                const isElim = teams.find((t) => t.name === teamName)?.isEliminated === true;
+                const logoSrc = TEAM_LOGOS[teamName];
+                return (
+                  <div className="mt-3 flex items-center gap-2">
+                    {logoSrc && (
+                      <img
+                        src={logoSrc}
+                        alt={teamName}
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          opacity: isElim ? 0.4 : 1,
+                          filter: isElim ? 'grayscale(60%)' : 'none',
+                        }}
+                      />
+                    )}
+                    <span
+                      className={`text-sm font-sans font-semibold ${isElim ? 'text-slate-500 line-through' : 'text-white'}`}
+                    >
+                      {teamName}
+                    </span>
+                    {isElim && (
+                      <span className="text-xs text-slate-500 font-sans">❌ Eliminated</span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -171,11 +223,37 @@ export default function FinalFourPage() {
             </option>
           ))}
         </select>
-        {effectiveLocked && picks.champ && teams.find((t) => t.name === picks.champ)?.isEliminated && (
-          <p className="mt-1 text-xs text-slate-500 font-sans text-center">
-            <span style={{ textDecoration: 'line-through' }}>{picks.champ}</span> ❌ Eliminated
-          </p>
-        )}
+        {effectiveLocked && picks.champ && (() => {
+          const teamName = picks.champ;
+          const isElim = teams.find((t) => t.name === teamName)?.isEliminated === true;
+          const logoSrc = TEAM_LOGOS[teamName];
+          return (
+            <div className="mt-3 flex items-center justify-center gap-2">
+              {logoSrc && (
+                <img
+                  src={logoSrc}
+                  alt={teamName}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    opacity: isElim ? 0.4 : 1,
+                    filter: isElim ? 'grayscale(60%)' : 'none',
+                  }}
+                />
+              )}
+              <span
+                className={`text-sm font-sans font-semibold ${isElim ? 'text-slate-500 line-through' : 'text-white'}`}
+              >
+                {teamName}
+              </span>
+              {isElim && (
+                <span className="text-xs text-slate-500 font-sans">❌ Eliminated</span>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {saveMessage && (
