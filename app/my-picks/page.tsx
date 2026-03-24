@@ -621,7 +621,9 @@ export default function MyPicksPage() {
     pickStatus: 'has-pick' | 'missing-pick' | 'complete' | 'voided-pick'; // voided-pick = pick on eliminated team
   }
 
-  const dayTabs: DayTab[] = Object.entries(gamesByDay).map(([dateKey, dayGames]) => {
+  const dayTabs: DayTab[] = Object.entries(gamesByDay)
+    .filter(([, dayGames]) => (dayGames as any[]).some((g: any) => !g.isComplete))
+    .map(([dateKey, dayGames]) => {
     const typedDayGames = dayGames as any[];
     const isEliteEight = typedDayGames.some((g: any) => g.round === 'Elite Eight');
     const firstGame = typedDayGames[0];
@@ -685,6 +687,22 @@ export default function MyPicksPage() {
     return dayDocs.some(doc => !doc.gameTime || now < new Date(doc.gameTime));
   };
 
+  // Helper: returns true when all skeleton docs for the given day are complete
+  // (i.e. every doc has isComplete: true). Returns false if no docs exist yet,
+  // so the tab still renders with its placeholder rather than disappearing prematurely.
+  const skeletonAllCompleteForDay = (targetDay: 'saturday' | 'sunday'): boolean => {
+    const seen = new Set<object>();
+    const dayDocs = [...skeletonByBracketKey.values()].filter(doc => {
+      if (seen.has(doc)) return false;
+      seen.add(doc);
+      if (doc.day === targetDay) return true;
+      if (doc.day === 'tbd' && doc.gameTime) return deriveDayFromGameTime(doc.gameTime) === targetDay;
+      return false;
+    });
+    if (dayDocs.length === 0) return false; // no docs yet → don't hide
+    return dayDocs.every(doc => doc.isComplete === true);
+  };
+
   const extraTabs: DayTab[] = [
     {
       dateKey: '__sat__',
@@ -715,6 +733,8 @@ export default function MyPicksPage() {
   const filteredExtraTabs = extraTabs.filter(t => {
     if (t.dateKey === '__sat__' && realDateKeys.has(satDate)) return false;
     if (t.dateKey === '__sun__' && realDateKeys.has(sunDate)) return false;
+    if (t.dateKey === '__sat__' && skeletonAllCompleteForDay('saturday')) return false;
+    if (t.dateKey === '__sun__' && skeletonAllCompleteForDay('sunday')) return false;
     return true;
   });
 
@@ -726,7 +746,14 @@ export default function MyPicksPage() {
     return firstUnlocked?.dateKey ?? allTabs[0]?.dateKey ?? null;
   })();
 
-  const effectiveActiveTab = activeTabKey ?? initialTabKey;
+  // If the stored activeTabKey is no longer present in the visible tab list
+  // (because its day just became all-complete and was filtered out), fall back
+  // to the first available tab rather than rendering a blank panel.
+  const visibleTabKeys = new Set(allTabs.map(t => t.dateKey));
+  const effectiveActiveTab =
+    (activeTabKey && visibleTabKeys.has(activeTabKey))
+      ? activeTabKey
+      : initialTabKey;
 
   // Per-day missing pick alerts for upcoming unlocked days (non-Elite Eight)
   const missingPickDayAlerts = dayTabs.filter(
