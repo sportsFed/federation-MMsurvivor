@@ -183,10 +183,7 @@ export default function FinalFourPage() {
                         style={{
                           width: 32,
                           height: 32,
-                          borderRadius: '50%',
                           objectFit: 'cover',
-                          opacity: isElim ? 0.4 : 1,
-                          filter: isElim ? 'grayscale(60%)' : 'none',
                         }}
                       />
                     )}
@@ -236,10 +233,7 @@ export default function FinalFourPage() {
                   style={{
                     width: 32,
                     height: 32,
-                    borderRadius: '50%',
                     objectFit: 'cover',
-                    opacity: isElim ? 0.4 : 1,
-                    filter: isElim ? 'grayscale(60%)' : 'none',
                   }}
                 />
               )}

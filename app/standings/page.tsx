@@ -335,6 +335,7 @@ export default function StandingsPage() {
                       return (
                         <td
                           key={r.key}
+                          style={isTeamEliminated ? { backgroundColor: 'rgba(220, 38, 38, 0.15)' } : {}}
                           className={`py-1.5 px-2 whitespace-nowrap text-center ${!deadlinePassed ? 'text-slate-600 text-xs' : ''}`}
                         >
                           {!deadlinePassed
@@ -350,10 +351,8 @@ export default function StandingsPage() {
                                 style={{
                                   width: 20,
                                   height: 20,
-                                  borderRadius: '50%',
                                   objectFit: 'cover',
                                   display: 'inline-block',
-                                  ...(isTeamEliminated ? { opacity: 0.4, filter: 'grayscale(60%)' } : {}),
                                 }}
                               />
                             )
@@ -369,6 +368,7 @@ export default function StandingsPage() {
                       const isChampEliminated = deadlinePassed && champName && eliminatedTeamSet.has(champName);
                       return (
                         <td
+                          style={isChampEliminated ? { backgroundColor: 'rgba(220, 38, 38, 0.15)' } : {}}
                           className={`py-1.5 px-2 whitespace-nowrap text-center font-semibold ${!deadlinePassed ? 'text-slate-600 text-xs' : ''}`}
                         >
                           {!deadlinePassed
@@ -384,10 +384,8 @@ export default function StandingsPage() {
                                 style={{
                                   width: 20,
                                   height: 20,
-                                  borderRadius: '50%',
                                   objectFit: 'cover',
                                   display: 'inline-block',
-                                  ...(isChampEliminated ? { opacity: 0.4, filter: 'grayscale(60%)' } : {}),
                                 }}
                               />
                             )
