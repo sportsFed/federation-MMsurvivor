@@ -299,6 +299,29 @@ export default function MyPicksPage() {
     return map;
   }, [allEntries]);
 
+  // F4/Natty pick distribution map: team name → { f4Count, nattyCount } (active entries only)
+  const gameTeamF4Counts = useMemo(() => {
+    const map = new Map<string, { f4Count: number; nattyCount: number }>();
+    for (const entry of allEntries) {
+      if (entry.isEliminated) continue;
+      const fp = entry.finalFourPicks as Record<string, string> | undefined;
+      if (!fp) continue;
+      for (const slot of ['f1', 'f2', 'f3', 'f4'] as const) {
+        const team = fp[slot];
+        if (team) {
+          const cur = map.get(team) ?? { f4Count: 0, nattyCount: 0 };
+          map.set(team, { ...cur, f4Count: cur.f4Count + 1 });
+        }
+      }
+      if (fp.champ) {
+        const team = fp.champ;
+        const cur = map.get(team) ?? { f4Count: 0, nattyCount: 0 };
+        map.set(team, { ...cur, nattyCount: cur.nattyCount + 1 });
+      }
+    }
+    return map;
+  }, [allEntries]);
+
   // Helper: derive effective dateKey for a pick (backward compat for picks without dateKey)
   const getEffectivePickDateKey = (pick: any): string | null => {
     if (pick.dateKey) return pick.dateKey;
@@ -1144,25 +1167,30 @@ export default function MyPicksPage() {
                   const countdown = (!isLocked && gameTime) ? formatCountdown(gameTime, now) : null;
                   const gamePickEntry = (userEntry?.survivorPicks ?? []).find((p: any) => p.gameId === game.id);
                   const thisGamePickTeam = gamePickEntry?.team;
+                  const activeEntryCount = allEntries.filter((e: any) => !e.isEliminated).length;
 
                   const renderPickAnalytics = () => {
                     const teamCounts = gamePickCounts.get(game.id);
                     if (!teamCounts || teamCounts.size === 0) return null;
-                    const total = Array.from(teamCounts.values()).reduce((a, b) => a + b, 0);
-                    if (total === 0) return null;
-                    // skeleton games do not have homeTeam/awayTeam fields
                     if ((game as any).isSkeletonGame || !game.homeTeam || !game.awayTeam) return null;
-                    const teams = [game.homeTeam, game.awayTeam];
+                    const teams = [game.homeTeam, game.awayTeam] as string[];
+                    const denom = activeEntryCount > 0 ? activeEntryCount : 1;
                     return (
-                      <div className="mt-2 flex gap-2 text-[10px] font-sans text-slate-500 border-t border-slate-700/50 pt-2">
+                      <div className="mt-2 grid grid-cols-2 gap-3 border-t border-slate-700/50 pt-2">
                         {teams.map((team: string) => {
-                          const count = teamCounts.get(team) ?? 0;
-                          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                          const survivorCount = teamCounts.get(team) ?? 0;
+                          const f4Data = gameTeamF4Counts.get(team);
+                          const f4Count = f4Data?.f4Count ?? 0;
+                          const nattyCount = f4Data?.nattyCount ?? 0;
+                          const pct = Math.round((survivorCount / denom) * 100);
                           return (
-                            <span key={team} className="flex-1 text-center">
-                              <span className="text-slate-400">{team}</span>
-                              <span className="ml-1 text-slate-500">{count} ({pct}%)</span>
-                            </span>
+                            <div key={team} className="text-xs font-sans">
+                              <div className="text-slate-300 font-medium truncate">{team}</div>
+                              <div className="text-slate-500">
+                                {survivorCount} survivor · {f4Count} F4 · {nattyCount} natty
+                              </div>
+                              <div className="text-slate-400">{pct}% of active</div>
+                            </div>
                           );
                         })}
                       </div>
