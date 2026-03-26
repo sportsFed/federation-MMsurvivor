@@ -81,9 +81,29 @@ export async function POST(request: NextRequest) {
       }
       const consolationPts = data.consolationPoints ?? 0;
 
+      // Build finalFourResults for all four regions
+      const finalFourResults: Record<string, { team: string; points: number; scored: boolean }> = {};
+      for (const slot of ['f1', 'f2', 'f3', 'f4'] as const) {
+        const pickedTeam = picks[slot];
+        if (!pickedTeam) continue;
+        const matched = finalFourSet.has(pickedTeam);
+        const seeds = teamSeedMap.get(pickedTeam);
+        const pts = matched && seeds && seeds.regionalSeed > 0 ? calculateFinalFourScore(seeds.regionalSeed) : 0;
+        finalFourResults[slot] = { team: pickedTeam, points: pts, scored: matched };
+      }
+
+      // Champion
+      if (picks.champ) {
+        const matched = champion != null && picks.champ === champion;
+        const seeds = teamSeedMap.get(picks.champ);
+        const pts = matched && seeds && seeds.nationalSeed > 0 ? calculateNationalChampScore(seeds.nationalSeed) : 0;
+        finalFourResults['champ'] = { team: picks.champ, points: pts, scored: matched };
+      }
+
       batch.update(entryDoc.ref, {
         finalFourPoints: finalFourPts,
         totalPoints: parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(1)),
+        finalFourResults,
       });
       updatedCount++;
     }

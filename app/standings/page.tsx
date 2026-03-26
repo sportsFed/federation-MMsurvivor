@@ -332,10 +332,17 @@ export default function StandingsPage() {
                     {FF_REGIONS.map((r) => {
                       const teamName = entry.finalFourPicks?.[r.key];
                       const isTeamEliminated = deadlinePassed && teamName && eliminatedTeamSet.has(teamName);
+                      const isScored = deadlinePassed && entry.finalFourResults?.[r.key]?.scored === true;
+                      const cellBg = isScored
+                        ? 'rgba(34, 197, 94, 0.15)'
+                        : isTeamEliminated
+                        ? 'rgba(239, 68, 68, 0.15)'
+                        : undefined;
                       return (
                         <td
                           key={r.key}
                           className={`py-1.5 px-2 whitespace-nowrap text-center ${!deadlinePassed ? 'text-slate-600 text-xs' : ''}`}
+                          style={cellBg ? { backgroundColor: cellBg } : undefined}
                         >
                           {!deadlinePassed
                             ? '🔒'
@@ -365,35 +372,42 @@ export default function StandingsPage() {
                     })}
                     {/* Natty — same lock rule as Final Four */}
                     {(() => {
-                      const champName = entry.finalFourPicks?.champ;
-                      const isChampEliminated = deadlinePassed && champName && eliminatedTeamSet.has(champName);
+                      const champTeamName = entry.finalFourPicks?.champ;
+                      const isChampTeamEliminated = deadlinePassed && champTeamName && eliminatedTeamSet.has(champTeamName);
+                      const isChampScored = deadlinePassed && entry.finalFourResults?.champ?.scored === true;
+                      const champBg = isChampScored
+                        ? 'rgba(34, 197, 94, 0.15)'
+                        : isChampTeamEliminated
+                        ? 'rgba(239, 68, 68, 0.15)'
+                        : undefined;
                       return (
                         <td
                           className={`py-1.5 px-2 whitespace-nowrap text-center font-semibold ${!deadlinePassed ? 'text-slate-600 text-xs' : ''}`}
+                          style={champBg ? { backgroundColor: champBg } : undefined}
                         >
                           {!deadlinePassed
                             ? '🔒'
-                            : !champName
+                            : !champTeamName
                             ? '—'
-                            : TEAM_LOGOS[champName]
+                            : TEAM_LOGOS[champTeamName]
                             ? (
                               <img
-                                src={TEAM_LOGOS[champName]}
-                                alt={champName}
-                                title={champName}
+                                src={TEAM_LOGOS[champTeamName]}
+                                alt={champTeamName}
+                                title={champTeamName}
                                 style={{
                                   width: 20,
                                   height: 20,
                                   borderRadius: '50%',
                                   objectFit: 'cover',
                                   display: 'inline-block',
-                                  ...(isChampEliminated ? { opacity: 0.4, filter: 'grayscale(60%)' } : {}),
+                                  ...(isChampTeamEliminated ? { opacity: 0.4, filter: 'grayscale(60%)' } : {}),
                                 }}
                               />
                             )
-                            : (isChampEliminated
-                              ? <span style={{ textDecoration: 'line-through' }}>{champName}</span>
-                              : champName)}
+                            : (isChampTeamEliminated
+                              ? <span style={{ textDecoration: 'line-through' }}>{champTeamName}</span>
+                              : champTeamName)}
                         </td>
                       );
                     })()}
