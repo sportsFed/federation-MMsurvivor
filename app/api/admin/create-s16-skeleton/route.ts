@@ -125,7 +125,7 @@ const S16_GAMES: S16GameSpec[] = [
     gameTime: '2026-03-28T02:10:00-04:00',
     homeTeam: 'Tennessee',
     homeSeed: 6,
-    awayTeam: 'Iowa State',
+    awayTeam: 'Iowa St.',
     awaySeed: 2,
     isSkeletonGame: false,
     isComplete: false,
