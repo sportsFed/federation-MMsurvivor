@@ -18,6 +18,12 @@ function getEasternDateKey(isoString: string): string {
   return new Date(isoString).toLocaleDateString('en-US', { timeZone: 'America/New_York' });
 }
 
+function getSurvivorColHeader(dk: string): string {
+  if (dk === '3/28/2026') return 'E8 #1';
+  if (dk === '3/29/2026') return 'E8 #2';
+  return dk;
+}
+
 interface PickCellData {
   team: string;
   result: 'win' | 'loss' | undefined;
@@ -181,8 +187,17 @@ export default function StandingsPage() {
       ).sort() as string[])
     : [];
 
+  const nowDateKey = getEasternDateKey(now.toISOString());
+
   const todayDateKey: string | null = gamesLoaded
-    ? (survivorDateKeys.find(dk => dk === getEasternDateKey(now.toISOString())) ?? null)
+    ? (survivorDateKeys.find(dk => {
+        if (dk === nowDateKey) return true;
+        const gamesForDate = games.filter((g: any) => {
+          const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt ?? null;
+          return gt && getEasternDateKey(gt) === dk && !g.isComplete;
+        });
+        return gamesForDate.length > 0;
+      }) ?? nowDateKey)
     : null;
 
   const historicalDateKeys = survivorDateKeys.filter(dk => dk !== todayDateKey);
@@ -238,7 +253,7 @@ export default function StandingsPage() {
                 {/* Today's survivor pick column */}
                 {todayDateKey !== null && (
                   <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-300 font-sans text-center">
-                    Today
+                    {getSurvivorColHeader(todayDateKey)}
                   </th>
                 )}
                 {/* Final Four columns — one per region; lock applies to ALL entrants until deadline */}
@@ -252,7 +267,7 @@ export default function StandingsPage() {
                 {/* Historical survivor pick columns — de-emphasized */}
                 {historicalDateKeys.map((dk) => (
                   <th key={dk} className="py-1.5 px-2 whitespace-nowrap text-[9px] uppercase tracking-widest text-slate-600 font-sans text-center">
-                    {dk}
+                    {getSurvivorColHeader(dk)}
                   </th>
                 ))}
               </tr>

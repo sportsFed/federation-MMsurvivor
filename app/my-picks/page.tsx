@@ -15,7 +15,7 @@ import {
   type GameProjection,
   type ProjectedTeam,
 } from '@/lib/bracket/framework';
-import { calculateFinalFourScore, calculateNationalChampScore } from '@/lib/scoring';
+import { calculateFinalFourScore, calculateNationalChampScore, calculateSurvivorScore, calculateConsolationScore } from '@/lib/scoring';
 
 interface TeamData {
   id: string;
@@ -470,6 +470,17 @@ export default function MyPicksPage() {
       return;
     }
 
+    // Enforce E8 pick cap: combined confirmed + projection picks can't exceed 2
+    if (round === 'Elite Eight') {
+      const existingE8Picks = (userEntry?.survivorPicks ?? []).filter(
+        (p: any) => p.round === 'Elite Eight'
+      );
+      if (existingE8Picks.length >= ELITE_EIGHT_REQUIRED_PICKS) {
+        showMessage(`You already have ${ELITE_EIGHT_REQUIRED_PICKS} Elite Eight picks. Change one of your existing picks instead.`);
+        return;
+      }
+    }
+
     // Derive dateKey from the Firestore skeleton game doc — it has the authoritative day field
     // set by the admin create-r32-skeleton API (not the static framework JSON).
     const skDay: string = skeletonGame?.day ?? 'tbd';
@@ -752,10 +763,11 @@ export default function MyPicksPage() {
   const realDateKeys = new Set(dayTabs.map(t => t.dateKey));
   const satDate = getEasternDateKey(SAT_ISO);
   const sunDate = getEasternDateKey(SUN_ISO);
+  const hasE8Games = games.some((g: any) => g.round === 'Elite Eight');
 
   const filteredExtraTabs = extraTabs.filter(t => {
-    if (t.dateKey === '__sat__' && realDateKeys.has(satDate)) return false;
-    if (t.dateKey === '__sun__' && realDateKeys.has(sunDate)) return false;
+    if (t.dateKey === '__sat__' && (realDateKeys.has(satDate) || hasE8Games)) return false;
+    if (t.dateKey === '__sun__' && (realDateKeys.has(sunDate) || hasE8Games)) return false;
     if (t.dateKey === '__sat__' && skeletonAllCompleteForDay('saturday')) return false;
     if (t.dateKey === '__sun__' && skeletonAllCompleteForDay('sunday')) return false;
     return true;
@@ -1373,6 +1385,16 @@ export default function MyPicksPage() {
                     }`}>
                       {isPickVoided ? '⚠️ ' : ''}{pick.team}
                       {isPickVoided && <span className="ml-1 text-[10px] text-red-500 font-normal">Team eliminated</span>}
+                      {pick.result === 'win' && pick.seed && pick.round && (
+                        <span className="text-green-400 text-[10px] font-mono ml-1">
+                          +{calculateSurvivorScore(pick.seed, pick.round)} pts
+                        </span>
+                      )}
+                      {pick.result === 'loss' && pick.seed && (
+                        <span className="text-slate-500 text-[10px] font-mono ml-1">
+                          +{calculateConsolationScore(pick.seed).toFixed(2)} pts
+                        </span>
+                      )}
                     </span>
                     <span>
                       {pick.result === 'win' ? '✅' : pick.result === 'loss' ? '❌' : <span className="text-slate-600 text-xs">Pending</span>}
