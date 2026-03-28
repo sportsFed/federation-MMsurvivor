@@ -601,14 +601,24 @@ export default function MyPicksPage() {
     }
   }
 
-  // Group by calendar date (in Eastern Time)
-  const gamesByDay = nonSkeletonGames.reduce((acc: Record<string, any[]>, game) => {
+  // Separate Elite Eight games — all four go into a single synthetic '__e8__' bucket
+  // regardless of whether they fall on Saturday (3/28) or Sunday (3/29).
+  const e8Games = nonSkeletonGames.filter((g: any) => g.round === 'Elite Eight');
+  const nonE8Games = nonSkeletonGames.filter((g: any) => g.round !== 'Elite Eight');
+
+  // Group non-E8 games by calendar date (in Eastern Time)
+  const gamesByDay = nonE8Games.reduce((acc: Record<string, any[]>, game) => {
     const gameTime = game.gameTime ?? game.tipoff ?? game.scheduledAt;
     const dateKey = gameTime ? getEasternDateKey(gameTime) : 'Unknown';
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(game);
     return acc;
   }, {});
+
+  // Inject all Elite Eight games under a single synthetic key
+  if (e8Games.length > 0) {
+    gamesByDay['__e8__'] = e8Games;
+  }
 
   // Pending picks (not yet scored), sorted chronologically by game time
   const gamesById = new Map(games.map((g: any) => [g.id, g]));
