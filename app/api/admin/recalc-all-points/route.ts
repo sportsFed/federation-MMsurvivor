@@ -29,6 +29,17 @@ export async function POST(request: NextRequest) {
       // no body or parse error — stay in dry run
     }
 
+    // Build a team-name → seed lookup from the teams collection.
+    // picks do NOT store seed on the pick object — only result, team, round, gameId.
+    const teamsSnap = await db.collection('teams').get();
+    const teamSeedMap = new Map<string, number>();
+    for (const teamDoc of teamsSnap.docs) {
+      const teamData = teamDoc.data() as Record<string, unknown>;
+      if (typeof teamData.name === 'string' && typeof teamData.seed === 'number') {
+        teamSeedMap.set(teamData.name, teamData.seed);
+      }
+    }
+
     const entriesSnap = await db.collection('entries').get();
     const batch = db.batch();
     let updated = 0;
@@ -39,25 +50,19 @@ export async function POST(request: NextRequest) {
 
       const survivorPicks = (data.survivorPicks as Array<Record<string, unknown>> | undefined) ?? [];
 
-      // Survivor points: derive from picks where result === 'win'
+      // Score all picks in a single pass — seed is NOT stored on the pick object itself,
+      // so look it up from the teams collection via pick.team.
       let survivorPts = 0;
-      for (const pick of survivorPicks) {
-        if (pick.result === 'win') {
-          survivorPts += calculateSurvivorScore(
-            typeof pick.seed === 'number' ? pick.seed : 0,
-            typeof pick.round === 'string' ? pick.round : '',
-          );
-        }
-      }
-
-      // Consolation points: derive from picks where result === 'loss'
-      // Do NOT rely on stored consolationPoints field — derive from picks directly
       let consolationPts = 0;
       for (const pick of survivorPicks) {
-        if (pick.result === 'loss') {
-          consolationPts += calculateConsolationScore(
-            typeof pick.seed === 'number' ? pick.seed : 0,
+        const seed = teamSeedMap.get(typeof pick.team === 'string' ? pick.team : '') ?? 0;
+        if (pick.result === 'win') {
+          survivorPts += calculateSurvivorScore(
+            seed,
+            typeof pick.round === 'string' ? pick.round : '',
           );
+        } else if (pick.result === 'loss') {
+          consolationPts += calculateConsolationScore(seed);
         }
       }
       consolationPts = parseFloat(consolationPts.toFixed(2));
