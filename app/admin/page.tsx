@@ -13,6 +13,8 @@ export default function AdminDashboard() {
   const [importStatus, setImportStatus] = useState('');
   const [seedStatus, setSeedStatus] = useState('');
   const [exportStatus, setExportStatus] = useState('');
+  const [recalcStatus, setRecalcStatus] = useState('');
+  const [recalcResult, setRecalcResult] = useState<{ updated: number; entries: { displayName: string; old: number; new: number }[] } | null>(null);
 
   // Change password state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -128,6 +130,26 @@ export default function AdminDashboard() {
     setExportStatus('❌ Error exporting teams.');
   }
 };
+
+  const handleRecalcAllPoints = async () => {
+    setRecalcStatus('Recalculating...');
+    setRecalcResult(null);
+    try {
+      const res = await fetch('/api/admin/recalc-all-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRecalcStatus(`✅ Recalculated ${data.updated} entries.`);
+        setRecalcResult(data);
+      } else {
+        setRecalcStatus(`❌ Error: ${data.error}`);
+      }
+    } catch {
+      setRecalcStatus('❌ Network error recalculating points.');
+    }
+  };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,6 +286,48 @@ export default function AdminDashboard() {
   {exportStatus && <p className="mt-2 text-sm text-slate-300">{exportStatus}</p>}
   <p className="text-slate-600 text-xs mt-1">Downloads a JSON snapshot of the current teams collection</p>
 </div>
+
+        {/* Recalculate All Points */}
+        <div className="p-6 rounded-xl border border-white/10 mb-6 mt-6" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+          <h2 className="font-bebas text-2xl text-white mb-1 tracking-widest">Points Integrity</h2>
+          <p className="text-slate-500 text-sm mb-4">
+            Reconstructs <code>totalPoints</code> for every entry from survivor wins + consolation + F4 points.
+            Run this if you suspect any drift between stored fields.
+          </p>
+          <button
+            onClick={handleRecalcAllPoints}
+            className="py-3 px-6 rounded-xl font-bebas text-xl text-white transition-all uppercase tracking-widest border border-white/20 hover:border-white/40"
+            style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+          >
+            🔁 Recalculate All Points
+          </button>
+          {recalcStatus && <p className="mt-2 text-sm text-slate-300">{recalcStatus}</p>}
+          {recalcResult && recalcResult.entries.length > 0 && (
+            <div className="mt-4 overflow-auto max-h-64">
+              <table className="text-xs text-slate-400 w-full border-collapse">
+                <thead>
+                  <tr className="text-left border-b border-white/10">
+                    <th className="pb-1 pr-4">Entry</th>
+                    <th className="pb-1 pr-4">Old</th>
+                    <th className="pb-1">New</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recalcResult.entries.map((e, i) => (
+                    <tr key={i} className="border-b border-white/5">
+                      <td className="py-1 pr-4">{e.displayName}</td>
+                      <td className="py-1 pr-4 text-red-400">{e.old}</td>
+                      <td className="py-1 text-green-400">{e.new}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {recalcResult && recalcResult.entries.length === 0 && (
+            <p className="mt-2 text-xs text-slate-500">All entries already have correct totals — no changes needed.</p>
+          )}
+        </div>
 
         {/* Change Password */}
         <div className="p-6 rounded-xl border border-white/10 mb-6" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
