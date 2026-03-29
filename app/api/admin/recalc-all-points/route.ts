@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
           }
         }
       }
-      finalFourPts = parseFloat(finalFourPts.toFixed(1));
+      finalFourPts = parseFloat(finalFourPts.toFixed(2));
 
       const newTotal = parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(1));
       const oldTotal = typeof data.totalPoints === 'number' ? data.totalPoints : 0;
