@@ -14,7 +14,8 @@ export default function AdminDashboard() {
   const [seedStatus, setSeedStatus] = useState('');
   const [exportStatus, setExportStatus] = useState('');
   const [recalcStatus, setRecalcStatus] = useState('');
-  const [recalcResult, setRecalcResult] = useState<{ updated: number; entries: { displayName: string; old: number; new: number }[] } | null>(null);
+  const [recalcResult, setRecalcResult] = useState<{ dryRun: boolean; updated: number; entries: { id: string; displayName: string; oldTotal: number; newTotal: number; survivorPts: number; consolationPts: number; finalFourPts: number }[] } | null>(null);
+  const [dryRunMode, setDryRunMode] = useState(true);
 
   // Change password state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -138,10 +139,11 @@ export default function AdminDashboard() {
       const res = await fetch('/api/admin/recalc-all-points', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: dryRunMode }),
       });
       const data = await res.json();
       if (res.ok) {
-        setRecalcStatus(`✅ Recalculated ${data.updated} entries.`);
+        setRecalcStatus(`✅ ${data.dryRun ? 'Dry run preview' : 'Written to Firestore'}: ${data.updated} entries affected.`);
         setRecalcResult(data);
       } else {
         setRecalcStatus(`❌ Error: ${data.error}`);
@@ -294,30 +296,64 @@ export default function AdminDashboard() {
             Reconstructs <code>totalPoints</code> for every entry from survivor wins + consolation + F4 points.
             Run this if you suspect any drift between stored fields.
           </p>
+          {/* Dry Run / Live mode toggle */}
+          <div className="flex items-center gap-3 mb-4">
+            <button
+              onClick={() => setDryRunMode(true)}
+              className="py-2 px-4 rounded-lg font-bebas text-sm uppercase tracking-widest transition-all border"
+              style={dryRunMode ? { backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.4)', color: 'white' } : { backgroundColor: 'transparent', borderColor: 'rgba(255,255,255,0.15)', color: '#94a3b8' }}
+            >
+              🔍 Dry Run Preview
+            </button>
+            <button
+              onClick={() => setDryRunMode(false)}
+              className="py-2 px-4 rounded-lg font-bebas text-sm uppercase tracking-widest transition-all border"
+              style={!dryRunMode ? { backgroundColor: '#dc2626', borderColor: '#dc2626', color: 'white' } : { backgroundColor: 'transparent', borderColor: 'rgba(255,255,255,0.15)', color: '#94a3b8' }}
+            >
+              ⚠️ Live Write
+            </button>
+          </div>
           <button
             onClick={handleRecalcAllPoints}
-            className="py-3 px-6 rounded-xl font-bebas text-xl text-white transition-all uppercase tracking-widest border border-white/20 hover:border-white/40"
-            style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+            className="py-3 px-6 rounded-xl font-bebas text-xl text-white transition-all uppercase tracking-widest"
+            style={dryRunMode
+              ? { backgroundColor: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }
+              : { backgroundColor: '#dc2626' }}
           >
-            🔁 Recalculate All Points
+            {dryRunMode ? '🔁 Preview Recalculation (Dry Run)' : '🔁 Recalculate & Write to Firestore'}
           </button>
           {recalcStatus && <p className="mt-2 text-sm text-slate-300">{recalcStatus}</p>}
+          {recalcResult && (
+            <div className="mt-3">
+              {recalcResult.dryRun ? (
+                <p className="text-sm text-yellow-400 mb-2">⚠️ Dry run — no changes written. Switch to Live mode to apply.</p>
+              ) : (
+                <p className="text-sm text-green-400 mb-2">✅ Written to Firestore. Backup stored as <code>totalPointsBackup</code>.</p>
+              )}
+            </div>
+          )}
           {recalcResult && recalcResult.entries.length > 0 && (
-            <div className="mt-4 overflow-auto max-h-64">
+            <div className="mt-2 overflow-auto max-h-64">
               <table className="text-xs text-slate-400 w-full border-collapse">
                 <thead>
                   <tr className="text-left border-b border-white/10">
                     <th className="pb-1 pr-4">Entry</th>
-                    <th className="pb-1 pr-4">Old</th>
-                    <th className="pb-1">New</th>
+                    <th className="pb-1 pr-2">Survivor</th>
+                    <th className="pb-1 pr-2">Consol.</th>
+                    <th className="pb-1 pr-2">F4</th>
+                    <th className="pb-1 pr-4">Old Total</th>
+                    <th className="pb-1">New Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {recalcResult.entries.map((e, i) => (
-                    <tr key={i} className="border-b border-white/5">
+                  {recalcResult.entries.map((e) => (
+                    <tr key={e.id} className={`border-b border-white/5 ${Math.abs(e.newTotal - e.oldTotal) >= 0.001 ? '' : 'opacity-50'}`}>
                       <td className="py-1 pr-4">{e.displayName}</td>
-                      <td className="py-1 pr-4 text-red-400">{e.old}</td>
-                      <td className="py-1 text-green-400">{e.new}</td>
+                      <td className="py-1 pr-2">{e.survivorPts}</td>
+                      <td className="py-1 pr-2">{e.consolationPts}</td>
+                      <td className="py-1 pr-2">{e.finalFourPts}</td>
+                      <td className="py-1 pr-4 text-red-400">{e.oldTotal}</td>
+                      <td className="py-1 text-green-400">{e.newTotal}</td>
                     </tr>
                   ))}
                 </tbody>
