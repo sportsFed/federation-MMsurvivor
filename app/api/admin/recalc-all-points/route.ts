@@ -67,8 +67,19 @@ export async function POST(request: NextRequest) {
       }
       consolationPts = parseFloat(consolationPts.toFixed(2));
 
-      // Final Four: read stored field only (cannot be re-derived without team seed lookup)
-      const finalFourPts = typeof data.finalFourPoints === 'number' ? data.finalFourPoints : 0;
+      // Final Four: re-derive from finalFourResults (written by set-game-winner auto-score)
+      // Do NOT rely on stored finalFourPoints — it may be missing for entries scored via set-game-winner
+      const finalFourResults = data.finalFourResults as Record<string, { points: number; scored: boolean }> | undefined;
+      let finalFourPts = 0;
+      if (finalFourResults) {
+        for (const slot of ['f1', 'f2', 'f3', 'f4', 'champ']) {
+          const slotData = finalFourResults[slot];
+          if (slotData?.scored === true && typeof slotData.points === 'number') {
+            finalFourPts += slotData.points;
+          }
+        }
+      }
+      finalFourPts = parseFloat(finalFourPts.toFixed(1));
 
       const newTotal = parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(1));
       const oldTotal = typeof data.totalPoints === 'number' ? data.totalPoints : 0;
@@ -89,6 +100,7 @@ export async function POST(request: NextRequest) {
           totalPointsBackup: oldTotal,
           totalPoints: newTotal,
           consolationPoints: consolationPts,
+          finalFourPoints: finalFourPts,
         });
       }
 
