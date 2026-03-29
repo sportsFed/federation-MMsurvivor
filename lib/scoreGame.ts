@@ -32,8 +32,10 @@ export async function scoreCompletedGame(
     await loserSnap.docs[0].ref.update({ isEliminated: true });
   }
 
-  // 2. Score all active entries that have a pick for this game
-  const entriesSnap = await db.collection('entries').where('isEliminated', '==', false).get();
+  // 2. Score all entries that have a pick for this game.
+  // Fetch ALL entries (not just active ones) so that already-eliminated entries can still
+  // earn points for their second E8 pick, which scores independently of survival status.
+  const entriesSnap = await db.collection('entries').get();
   const batch = db.batch();
   let scored = 0;
 
@@ -46,11 +48,13 @@ export async function scoreCompletedGame(
 
     const pickedTeam = survivorPicks[pickIndex].team;
     const isWinner = pickedTeam === winnerName;
+    const isAlreadyEliminated = entry.isEliminated === true;
 
     const updatedPicks = [...survivorPicks];
     updatedPicks[pickIndex] = { ...updatedPicks[pickIndex], result: isWinner ? 'win' : 'loss' };
 
     if (isWinner) {
+      // Award points regardless of elimination status — never flip isEliminated back to false
       batch.update(entryDoc.ref, {
         survivorPicks: updatedPicks,
         totalPoints: (entry.totalPoints ?? 0) + points,
@@ -59,9 +63,10 @@ export async function scoreCompletedGame(
       const consolationPoints = calculateConsolationScore(loserSeed);
       batch.update(entryDoc.ref, {
         survivorPicks: updatedPicks,
-        isEliminated: true,
-        consolationPoints: (entry.consolationPoints ?? 0) + consolationPoints,
         totalPoints: (entry.totalPoints ?? 0) + consolationPoints,
+        consolationPoints: (entry.consolationPoints ?? 0) + consolationPoints,
+        // Only write isEliminated: true if not already eliminated — never re-write it
+        ...(isAlreadyEliminated ? {} : { isEliminated: true }),
       });
     }
     scored++;

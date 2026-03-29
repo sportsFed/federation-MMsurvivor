@@ -18,9 +18,12 @@ function getEasternDateKey(isoString: string): string {
   return new Date(isoString).toLocaleDateString('en-US', { timeZone: 'America/New_York' });
 }
 
+// E8 spans two days; both dates are always treated as primary (never historical).
+const E8_DATE_KEYS = ['3/28/2026', '3/29/2026'];
+
 function getSurvivorColHeader(dk: string): string {
-  if (dk === '3/28/2026') return 'E8 #1';
-  if (dk === '3/29/2026') return 'E8 #2';
+  if (dk === '3/28/2026') return 'E8 Sat';
+  if (dk === '3/29/2026') return 'E8 Sun';
   return dk;
 }
 
@@ -49,8 +52,10 @@ function getPickForDate(
   const gameTime = game?.gameTime ?? game?.tipoff ?? game?.scheduledAt;
   const tipped = gameTime ? now >= new Date(gameTime) : (game?.isComplete ?? false);
   if (!tipped) return '🔒';
-  // For eliminated entrants, hide unscored picks — they will never be scored
-  if (entry.isEliminated && pick.result !== 'win' && pick.result !== 'loss') {
+  // For eliminated entrants on non-E8 dates, hide unscored picks — they will never be scored.
+  // E8 picks are scored independently so we show them even for eliminated entries.
+  const isE8Date = E8_DATE_KEYS.includes(dateKey);
+  if (entry.isEliminated && !isE8Date && pick.result !== 'win' && pick.result !== 'loss') {
     return '—';
   }
   return { team: pick.team, result: pick.result as 'win' | 'loss' | undefined };
@@ -200,7 +205,15 @@ export default function StandingsPage() {
       }) ?? nowDateKey)
     : null;
 
-  const historicalDateKeys = survivorDateKeys.filter(dk => dk !== todayDateKey);
+  const historicalDateKeys = survivorDateKeys.filter(dk => {
+    if (E8_DATE_KEYS.includes(dk)) return false; // E8 dates never go historical
+    return dk !== todayDateKey;
+  });
+
+  // E8 dates that exist in data but are not today — rendered at full brightness alongside today
+  const pinnedDateKeys = E8_DATE_KEYS.filter(
+    dk => survivorDateKeys.includes(dk) && dk !== todayDateKey
+  );
 
   if (loading) {
     return (
@@ -256,6 +269,12 @@ export default function StandingsPage() {
                     {getSurvivorColHeader(todayDateKey)}
                   </th>
                 )}
+                {/* Pinned E8 columns — E8 dates that are not today, rendered at full brightness */}
+                {pinnedDateKeys.map((dk) => (
+                  <th key={dk} className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-300 font-sans text-center">
+                    {getSurvivorColHeader(dk)}
+                  </th>
+                ))}
                 {/* Final Four columns — one per region; lock applies to ALL entrants until deadline */}
                 {FF_REGIONS.map((r) => (
                   <th key={r.key} className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">
@@ -342,6 +361,36 @@ export default function StandingsPage() {
                         </td>
                       );
                     })()}
+                    {/* Pinned E8 pick cells — E8 dates that are not today, rendered at full brightness */}
+                    {pinnedDateKeys.map((dk) => {
+                      const cellVal = gamesLoaded ? getPickForDate(entry, dk, games, now) : '🔒';
+                      if (cellVal === '🔒') {
+                        return (
+                          <td key={dk} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600 text-xs">
+                            🔒
+                          </td>
+                        );
+                      }
+                      if (cellVal === '—') {
+                        return (
+                          <td key={dk} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600">
+                            —
+                          </td>
+                        );
+                      }
+                      const { team, result } = cellVal;
+                      const cellClass = result === 'win'
+                        ? 'text-green-400 bg-green-900/20'
+                        : result === 'loss'
+                        ? 'text-red-400 bg-red-900/20'
+                        : 'text-slate-300 bg-slate-700/20';
+                      const textClass = result === 'loss' ? 'line-through' : '';
+                      return (
+                        <td key={dk} className={`py-1.5 px-2 whitespace-nowrap text-center ${cellClass}`}>
+                          <span className={textClass}>{team}</span>
+                        </td>
+                      );
+                    })}
                     {/* Final Four columns — lock emoji applies universally to ALL entrants (including current user)
                         until the deadline passes. No exceptions in the standings view. */}
                     {FF_REGIONS.map((r) => {
