@@ -57,13 +57,13 @@ export async function scoreCompletedGame(
       // Award points regardless of elimination status — never flip isEliminated back to false
       batch.update(entryDoc.ref, {
         survivorPicks: updatedPicks,
-        totalPoints: (entry.totalPoints ?? 0) + points,
+        totalPoints: parseFloat(((entry.totalPoints ?? 0) + points).toFixed(2)),
       });
     } else {
       const consolationPoints = calculateConsolationScore(loserSeed);
       batch.update(entryDoc.ref, {
         survivorPicks: updatedPicks,
-        totalPoints: (entry.totalPoints ?? 0) + consolationPoints,
+        totalPoints: parseFloat(((entry.totalPoints ?? 0) + consolationPoints).toFixed(2)),
         consolationPoints: (entry.consolationPoints ?? 0) + consolationPoints,
         // Only write isEliminated: true if not already eliminated — never re-write it
         ...(isAlreadyEliminated ? {} : { isEliminated: true }),

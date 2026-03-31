@@ -64,6 +64,14 @@ async function lookupR64GameDoc(
 }
 
 /**
+ * Returns true only for R64-format game IDs (e.g. "E-R64-G1").
+ * Used to skip the R64 fallback lookup for E8/F4/Natty bracketKeys.
+ */
+function isR64GameId(gameId: string): boolean {
+  return /^[A-Z]+-R64-/.test(gameId);
+}
+
+/**
  * For each skeleton game (isSkeletonGame === true) in the games collection:
  * - Use its `bracketKey` field (e.g. "W-R32-G1") to look up the framework JSON
  * - Identify the two upstream participant game IDs (participants[0].gameId and participants[1].gameId)
@@ -97,15 +105,16 @@ export async function resolveSkeletonGames(): Promise<ResolveSkeletonResult> {
           const upstream0Id: string = data.participants[0].gameId;
           const upstream1Id: string = data.participants[1].gameId;
 
-          // S16 games use bracketKey as Firestore doc ID — direct lookup
+          // S16/E8/F4/Natty games use bracketKey as Firestore doc ID — direct lookup
           let [d0, d1] = await Promise.all([
             lookupGameDocById(upstream0Id),
             lookupGameDocById(upstream1Id),
           ]);
 
-          // Fall back to region+seed query if direct lookup misses (handles any edge case)
-          if (!d0) d0 = await lookupR64GameDoc(upstream0Id);
-          if (!d1) d1 = await lookupR64GameDoc(upstream1Id);
+          // Fall back to region+seed query only for R64-format game IDs
+          // (avoids unnecessary Firestore queries for E8/F4/Natty bracketKeys)
+          if (!d0) d0 = isR64GameId(upstream0Id) ? await lookupR64GameDoc(upstream0Id) : null;
+          if (!d1) d1 = isR64GameId(upstream1Id) ? await lookupR64GameDoc(upstream1Id) : null;
 
           if (!d0 || !d1 || !d0.isComplete || !d0.winner || !d1.isComplete || !d1.winner) {
             skipped++;

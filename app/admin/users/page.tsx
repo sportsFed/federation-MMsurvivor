@@ -59,7 +59,7 @@ export default function AdminUsers() {
                         <span className="text-green-400 bg-green-900/30 px-2 py-1 rounded text-xs font-bold uppercase">Active</span>
                       )}
                     </td>
-                    <td className="p-4 font-mono text-white">{(user.totalPoints ?? 0).toFixed(1)}</td>
+                    <td className="p-4 font-mono text-white">{(user.totalPoints ?? 0).toFixed(2)}</td>
                     <td className="p-4 text-slate-400 text-sm">{user.currentPick || '—'}</td>
                   </tr>
                 ))}

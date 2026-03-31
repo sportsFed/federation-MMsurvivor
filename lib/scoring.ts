@@ -12,7 +12,7 @@ export const ROUND_MULTIPLIERS: Record<string, number> = {
 export function calculateSurvivorScore(seed: number, roundName: string): number {
   const multiplier = ROUND_MULTIPLIERS[roundName] || 0;
   const score = seed * multiplier;
-  return parseFloat(score.toFixed(1));
+  return parseFloat(score.toFixed(2));
 }
 
 export function calculateConsolationScore(seed: number): number {
