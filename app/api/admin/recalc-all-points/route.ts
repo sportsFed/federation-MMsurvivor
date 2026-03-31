@@ -71,7 +71,7 @@ async function recalcAllPoints(dryRun: boolean) {
     }
     finalFourPts = parseFloat(finalFourPts.toFixed(2));
 
-    const newTotal = parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(1));
+    const newTotal = parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(2));
     const oldTotal = typeof data.totalPoints === 'number' ? data.totalPoints : 0;
 
     entries.push({

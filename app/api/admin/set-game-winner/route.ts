@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
               if (fieldKey && pts > 0) {
                 const currentTotal: number = data.totalPoints ?? 0;
                 f4Batch.update(entryDoc.ref, {
-                  totalPoints: parseFloat((currentTotal + pts).toFixed(1)),
+                  totalPoints: parseFloat((currentTotal + pts).toFixed(2)),
                   [`finalFourResults.${fieldKey}`]: { team: winner, points: pts, scored: true },
                 });
                 f4UpdateCount++;

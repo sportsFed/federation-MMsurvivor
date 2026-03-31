@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 
       batch.update(entryDoc.ref, {
         finalFourPoints: finalFourPts,
-        totalPoints: parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(1)),
+        totalPoints: parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(2)),
         finalFourResults,
       });
       updatedCount++;

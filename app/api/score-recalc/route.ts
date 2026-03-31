@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
       const consolationPts = data.consolationPoints ?? 0;
       const finalFourPts = data.finalFourPoints ?? 0;
-      const newTotal = parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(1));
+      const newTotal = parseFloat((survivorPts + consolationPts + finalFourPts).toFixed(2));
 
       await updateDoc(doc(db, 'entries', entryDoc.id), { totalPoints: newTotal });
     }
