@@ -188,6 +188,30 @@ function ProjectionPickCard({
   );
 }
 
+/**
+ * Traverses the participants chain for a skeleton game to find all possible remaining teams.
+ * Used for F4/Natty skeleton games that aren't in the framework projection model.
+ */
+function getSkeletonTeamOptions(game: any, allGames: any[]): string[] {
+  if (!game.isSkeletonGame || !Array.isArray(game.participants)) return [];
+  const teams: string[] = [];
+  for (const p of game.participants) {
+    if (p.type === 'winnerOf') {
+      const upstream = allGames.find((g: any) => g.id === p.gameId || g.bracketKey === p.gameId);
+      if (!upstream) continue;
+      if (upstream.winner) {
+        teams.push(upstream.winner);
+      } else if (upstream.isSkeletonGame) {
+        // Recurse one level
+        teams.push(...getSkeletonTeamOptions(upstream, allGames));
+      } else if (upstream.homeTeam && upstream.awayTeam) {
+        teams.push(upstream.homeTeam, upstream.awayTeam);
+      }
+    }
+  }
+  return Array.from(new Set(teams));
+}
+
 export default function MyPicksPage() {
   const router = useRouter();
   const [games, setGames] = useState<any[]>([]);
@@ -661,6 +685,8 @@ export default function MyPicksPage() {
     dateKey: string;
     label: string;
     isEliteEight: boolean;
+    isFinalFour: boolean;
+    isNatty: boolean;
     hasUnlockedGames: boolean;
     pickStatus: 'has-pick' | 'missing-pick' | 'complete' | 'voided-pick'; // voided-pick = pick on eliminated team
   }
@@ -670,9 +696,17 @@ export default function MyPicksPage() {
     .map(([dateKey, dayGames]) => {
     const typedDayGames = dayGames as any[];
     const isEliteEight = typedDayGames.some((g: any) => g.round === 'Elite Eight');
+    const isFinalFour = typedDayGames.some((g: any) => g.round === 'Final Four');
+    const isNatty = typedDayGames.some((g: any) => g.round === 'National Championship');
     const firstGame = typedDayGames[0];
     const gameTimeStr = firstGame.gameTime ?? firstGame.tipoff ?? '';
-    const label = isEliteEight ? 'Elite 8' : (gameTimeStr ? formatEasternTabLabel(gameTimeStr) : dateKey);
+    const label = isEliteEight
+      ? 'Elite 8'
+      : isFinalFour
+      ? 'F4'
+      : isNatty
+      ? 'Natty'
+      : (gameTimeStr ? formatEasternTabLabel(gameTimeStr) : dateKey);
     const hasUnlockedGames = typedDayGames.some((g: any) => {
       const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt;
       return gt && now < new Date(gt);
@@ -692,7 +726,7 @@ export default function MyPicksPage() {
       }
     }
 
-    return { dateKey, label, isEliteEight, hasUnlockedGames, pickStatus };
+    return { dateKey, label, isEliteEight, isFinalFour, isNatty, hasUnlockedGames, pickStatus };
   });
 
   // Add Saturday, Sunday, Projections tabs (always shown after Firestore tabs)
@@ -752,6 +786,8 @@ export default function MyPicksPage() {
       dateKey: '__sat__',
       label: formatEasternTabLabel(SAT_ISO),
       isEliteEight: false,
+      isFinalFour: false,
+      isNatty: false,
       hasUnlockedGames: skeletonHasUnlockedForDay('saturday'),
       pickStatus: satPickVoided ? 'voided-pick' : satProjectionPick ? 'has-pick' : 'missing-pick',
     },
@@ -759,6 +795,8 @@ export default function MyPicksPage() {
       dateKey: '__sun__',
       label: formatEasternTabLabel(SUN_ISO),
       isEliteEight: false,
+      isFinalFour: false,
+      isNatty: false,
       hasUnlockedGames: skeletonHasUnlockedForDay('sunday'),
       pickStatus: sunPickVoided ? 'voided-pick' : sunProjectionPick ? 'has-pick' : 'missing-pick',
     },
@@ -766,6 +804,8 @@ export default function MyPicksPage() {
       dateKey: '__proj__',
       label: 'Projections',
       isEliteEight: false,
+      isFinalFour: false,
+      isNatty: false,
       hasUnlockedGames: false,
       pickStatus: 'complete',
     },
@@ -1168,6 +1208,9 @@ export default function MyPicksPage() {
           {effectiveActiveTab && gamesByDay[effectiveActiveTab] && (() => {
             const tabGames = gamesByDay[effectiveActiveTab] as any[];
             const isEliteEightDay = tabGames.some((g: any) => g.round === 'Elite Eight');
+            const isFinalFourOrNattyDay = tabGames.some(
+              (g: any) => g.round === 'Final Four' || g.round === 'National Championship'
+            );
 
             // Sort: incomplete/upcoming first, completed at bottom; nulls sort to end within each group
             const sortedTabGames = [...tabGames].sort((a, b) => {
@@ -1261,6 +1304,74 @@ export default function MyPicksPage() {
                           </div>
                         </div>
                         {renderPickAnalytics()}
+                      </div>
+                    );
+                  }
+
+                  // Standard card for active/upcoming games
+                  // For F4/Natty skeleton games: show team options from participants chain
+                  if (isFinalFourOrNattyDay && game.isSkeletonGame) {
+                    const teamOptions = getSkeletonTeamOptions(game, games);
+                    const existingPick = (userEntry?.survivorPicks ?? []).find(
+                      (p: any) => p.gameId === game.id && !p.isProjectionPick
+                    );
+                    const thisPickTeam = existingPick?.team ?? null;
+                    return (
+                      <div
+                        key={game.id}
+                        className={`bg-slate-800/40 border rounded-xl p-3 mb-2 transition-all ${
+                          isLocked ? 'border-slate-700/50 opacity-70' : 'border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] text-slate-500 uppercase tracking-widest font-sans">
+                            {game.region} · {game.round}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {easternTime && (
+                              <span className="text-[11px] text-slate-400 font-sans">{easternTime} ET</span>
+                            )}
+                            {isLocked ? (
+                              <span className="text-[11px] text-slate-500">🔒</span>
+                            ) : countdown ? (
+                              <span className="text-[11px] text-amber-400 font-mono font-semibold">⏱ {countdown}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        {teamOptions.length === 0 ? (
+                          <p className="text-xs text-slate-500 italic font-sans">Teams TBD — awaiting upstream results</p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2 flex-wrap">
+                            {teamOptions.map((team: string) => {
+                              const isThisRoundPick = thisPickTeam === team;
+                              const isUsedInPrevRound = alreadyPickedTeams.includes(team);
+                              const canPick = !isLocked && !game.isComplete && !isUsedInPrevRound;
+                              return (
+                                <button
+                                  key={team}
+                                  onClick={() => canPick && setConfirmPick({ team, seed: 0, game })}
+                                  disabled={!canPick}
+                                  className={`rounded-lg px-3 py-2.5 text-sm font-sans font-semibold transition-all text-left ${
+                                    isThisRoundPick
+                                      ? 'bg-green-700/40 border border-green-500/60 text-green-300 cursor-pointer hover:bg-green-700/60'
+                                      : isUsedInPrevRound
+                                      ? 'bg-slate-800 border border-slate-700/50 text-slate-600 cursor-not-allowed'
+                                      : isLocked || game.isComplete
+                                      ? 'bg-slate-800/60 border border-slate-700/40 text-slate-500 cursor-default'
+                                      : 'bg-slate-700/60 hover:bg-red-700/50 hover:border-red-500/50 border border-slate-600 text-white cursor-pointer'
+                                  }`}
+                                >
+                                  <span className={`block leading-tight text-xs`}>{team}</span>
+                                  {isThisRoundPick && <span className="text-[10px] text-green-400 mt-0.5 block">✓ Your Pick</span>}
+                                  {isUsedInPrevRound && <span className="text-[10px] text-slate-600 mt-0.5 block">Used</span>}
+                                  {isLocked && !isThisRoundPick && !isUsedInPrevRound && (
+                                    <span className="text-[10px] text-slate-600 mt-0.5 block">Locked</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   }

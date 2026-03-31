@@ -36,7 +36,12 @@ export default function AdminGamesPage() {
   const [creatingR32, setCreatingR32] = useState(false);
   const [creatingS16, setCreatingS16] = useState(false);
   const [creatingE8, setCreatingE8] = useState(false);
+  const [creatingF4, setCreatingF4] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [finalizingE8, setFinalizingE8] = useState(false);
+  const [e8FinalizeStatus, setE8FinalizeStatus] = useState('');
+  const [e8FinalizeResult, setE8FinalizeResult] = useState<{ eliminated: number; dryRun: boolean; entries: { id: string; displayName: string; e8PickCount: number }[] } | null>(null);
+  const [e8FinalizeConfirmMode, setE8FinalizeConfirmMode] = useState(false);
   const [projectionModel, setProjectionModel] = useState<Map<string, GameProjection>>(new Map());
 
   function isoToDatetimeLocal(iso: string): string {
@@ -201,6 +206,48 @@ export default function AdminGamesPage() {
     }
     setTimeout(() => setActionMessage(''), 6000);
     setCreatingE8(false);
+  };
+
+  const handleCreateF4Skeleton = async () => {
+    setCreatingF4(true);
+    setActionMessage('Creating F4/Natty skeleton games...');
+    try {
+      const res = await fetch('/api/admin/create-f4-skeleton', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setActionMessage(`✅ F4/Natty skeletons: ${data.created ?? data.forceOverwritten} created/updated`);
+        fetchGames();
+      } else {
+        setActionMessage(`❌ F4 Skeleton: ${data.error}`);
+      }
+    } catch {
+      setActionMessage('❌ Network error creating F4 skeleton.');
+    }
+    setCreatingF4(false);
+    setTimeout(() => setActionMessage(''), 4000);
+  };
+
+  const handleFinalizeE8 = async (dryRun: boolean) => {
+    setFinalizingE8(true);
+    setE8FinalizeStatus(dryRun ? 'Previewing...' : 'Finalizing...');
+    try {
+      const res = await fetch(`/api/admin/finalize-e8-eliminations${dryRun ? '?dryRun=true' : ''}`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setE8FinalizeResult(data);
+        setE8FinalizeStatus(dryRun
+          ? `Preview: ${data.eliminated} entries would be eliminated`
+          : `✅ Eliminated ${data.eliminated} entries`);
+        if (dryRun) setE8FinalizeConfirmMode(true);
+      } else {
+        setE8FinalizeStatus(`❌ ${data.error}`);
+      }
+    } catch {
+      setE8FinalizeStatus('❌ Network error');
+    }
+    setFinalizingE8(false);
   };
 
   const pendingGames = games.filter(g => !g.isComplete);
@@ -445,6 +492,75 @@ export default function AdminGamesPage() {
                 >
                   {creatingE8 ? 'Creating…' : 'Create Elite Eight Skeletons'}
                 </button>
+              </div>
+            </div>
+
+            {/* Create Final Four / Natty Skeleton Games */}
+            <div className="mb-8 p-4 rounded-xl border border-slate-700/50 bg-slate-800/20">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-sm text-white font-semibold font-sans">Final Four &amp; Natty Skeleton Games</p>
+                  <p className="text-xs text-slate-500 font-sans mt-0.5">
+                    Creates 2 Final Four and 1 National Championship placeholder game docs. Teams populate automatically from E8 results.
+                  </p>
+                  <p className="text-[11px] text-green-500/70 font-sans mt-1">✓ This action is safe — it will never overwrite existing games.</p>
+                </div>
+                <button
+                  onClick={handleCreateF4Skeleton}
+                  disabled={creatingF4}
+                  className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {creatingF4 ? 'Creating…' : '🏀 Create F4/Natty Skeleton'}
+                </button>
+              </div>
+            </div>
+
+            {/* Finalize E8 Eliminations */}
+            <div className="mb-8 p-4 rounded-xl border border-slate-700/50 bg-slate-800/20">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-sm text-white font-semibold font-sans">Finalize E8 Eliminations</p>
+                  <p className="text-xs text-slate-500 font-sans mt-0.5">
+                    Eliminates entries that submitted fewer than 2 E8 picks after Sunday March 29.
+                  </p>
+                  {e8FinalizeStatus && (
+                    <p className="text-xs text-amber-400 font-sans mt-1">{e8FinalizeStatus}</p>
+                  )}
+                  {e8FinalizeResult && e8FinalizeResult.entries.length > 0 && (
+                    <ul className="mt-1 text-xs text-slate-400 font-sans space-y-0.5">
+                      {e8FinalizeResult.entries.map(e => (
+                        <li key={e.id}>{e.displayName} — {e.e8PickCount} E8 pick{e.e8PickCount !== 1 ? 's' : ''}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  {!e8FinalizeConfirmMode ? (
+                    <button
+                      onClick={() => handleFinalizeE8(true)}
+                      disabled={finalizingE8}
+                      className="px-4 py-2 rounded bg-amber-700 hover:bg-amber-600 border border-amber-600 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      {finalizingE8 ? 'Previewing…' : 'Finalize E8 Eliminations'}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { handleFinalizeE8(false); setE8FinalizeConfirmMode(false); }}
+                        disabled={finalizingE8}
+                        className="px-4 py-2 rounded bg-red-700 hover:bg-red-600 border border-red-600 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {finalizingE8 ? 'Finalizing…' : 'Confirm &amp; Write'}
+                      </button>
+                      <button
+                        onClick={() => { setE8FinalizeConfirmMode(false); setE8FinalizeStatus(''); setE8FinalizeResult(null); }}
+                        className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300 text-sm font-semibold transition-all whitespace-nowrap"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 

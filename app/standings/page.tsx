@@ -5,7 +5,7 @@ import { db, auth } from '@/lib/firebase/clientApp';
 import { collection, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
-const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };
+const RANK_EMOJI: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉', 4: '💰', 5: '💰' };
 
 // March 19, 2026 12:15 PM ET (UTC-4 = 16:15 UTC)
 const FINAL_FOUR_DEADLINE = new Date('2026-03-19T16:15:00Z');
@@ -24,6 +24,8 @@ const E8_DATE_KEYS = ['3/28/2026', '3/29/2026'];
 function getSurvivorColHeader(dk: string): string {
   if (dk === '3/28/2026') return 'E8 #1';
   if (dk === '3/29/2026') return 'E8 #2';
+  if (dk === '4/4/2026') return 'F4 (4/4)';
+  if (dk === '4/6/2026') return 'Natty (4/6)';
   return dk;
 }
 
@@ -331,7 +333,7 @@ export default function StandingsPage() {
                       isCurrentUser
                         ? 'bg-red-900/10 border-l-2 border-l-fedRed'
                         : ''
-                    } ${entry.isEliminated ? 'opacity-60' : ''}`}
+                    } ${entry.isEliminated ? 'opacity-60' : ''} ${rank === 5 ? 'border-b-2 border-fedRed' : ''}`}
                   >
                     {/* Rank — sticky */}
                     <td className={`${STICKY_RANK_CLS} text-slate-400`}>{RANK_EMOJI[rank] ?? rank}</td>
