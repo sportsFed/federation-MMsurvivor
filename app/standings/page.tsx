@@ -18,8 +18,14 @@ function getEasternDateKey(isoString: string): string {
   return new Date(isoString).toLocaleDateString('en-US', { timeZone: 'America/New_York' });
 }
 
-// E8 spans two days; both dates are always treated as primary (never historical).
+// E8 spans two days.
 const E8_DATE_KEYS = ['3/28/2026', '3/29/2026'];
+
+// Survivor pick date keys that should never appear as columns (e.g. Natty survivor pick is redundant).
+const EXCLUDED_SURVIVOR_DATE_KEYS = ['4/6/2026'];
+
+// The Final Four survivor pick date — always rendered as a dedicated column after Points.
+const F4_SURVIVOR_DATE_KEY = '4/4/2026';
 
 function getSurvivorColHeader(dk: string): string {
   if (dk === '3/28/2026') return 'E8 #1';
@@ -209,7 +215,7 @@ export default function StandingsPage() {
     return () => clearInterval(interval);
   }, [fetchEntries]);
 
-  // Derive sorted unique date keys from real (non-skeleton) games
+  // Derive sorted unique date keys from real (non-skeleton) games, excluding any keys in EXCLUDED_SURVIVOR_DATE_KEYS.
   const survivorDateKeys: string[] = gamesLoaded
     ? (Array.from(
         new Set(
@@ -221,31 +227,12 @@ export default function StandingsPage() {
             })
             .filter(Boolean)
         )
-      ).sort() as string[])
+      ).sort() as string[]).filter((dk) => !EXCLUDED_SURVIVOR_DATE_KEYS.includes(dk))
     : [];
 
-  const nowDateKey = getEasternDateKey(now.toISOString());
-
-  const todayDateKey: string | null = gamesLoaded
-    ? (survivorDateKeys.find(dk => {
-        if (dk === nowDateKey) return true;
-        const gamesForDate = games.filter((g: any) => {
-          const gt = g.gameTime ?? g.tipoff ?? g.scheduledAt ?? null;
-          return gt && getEasternDateKey(gt) === dk && !g.isComplete;
-        });
-        return gamesForDate.length > 0;
-      }) ?? nowDateKey)
-    : null;
-
-  const historicalDateKeys = survivorDateKeys.filter(dk => {
-    if (E8_DATE_KEYS.includes(dk)) return false; // E8 dates never go historical
-    return dk !== todayDateKey;
-  });
-
-  // E8 dates that exist in data but are not today — rendered at full brightness alongside today
-  const pinnedDateKeys = E8_DATE_KEYS.filter(
-    dk => survivorDateKeys.includes(dk) && dk !== todayDateKey
-  );
+  // Historical columns: all survivor date keys except the dedicated F4 column.
+  // E8 dates now fall into the historical section at far right.
+  const historicalDateKeys = survivorDateKeys.filter(dk => dk !== F4_SURVIVOR_DATE_KEY);
 
   if (loading) {
     return (
@@ -294,16 +281,8 @@ export default function StandingsPage() {
                 {/* Sticky name column */}
                 <th className={`${STICKY_NAME_CLS} text-[10px] uppercase tracking-widest text-slate-400 font-sans`}>Entrant</th>
                 <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-right">Pts</th>
-                <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">Status</th>
-                {/* Today's survivor pick column — skip if it's an E8 date (E8 handled below) */}
-                {todayDateKey !== null && !E8_DATE_KEYS.includes(todayDateKey) && (
-                  <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-300 font-sans text-center">
-                    {getSurvivorColHeader(todayDateKey)}
-                  </th>
-                )}
-                {/* E8 columns — always two dedicated columns, E8 #1 and E8 #2 */}
-                <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-300 font-sans text-center">E8 #1</th>
-                <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-300 font-sans text-center">E8 #2</th>
+                {/* F4 survivor pick column — fixed at 4/4/2026, always right after Points */}
+                <th className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-300 font-sans text-center">F4 (4/4)</th>
                 {/* Final Four columns — one per region; lock applies to ALL entrants until deadline */}
                 {FF_REGIONS.map((r) => (
                   <th key={r.key} className="py-1.5 px-2 whitespace-nowrap text-[10px] uppercase tracking-widest text-slate-400 font-sans text-center">
@@ -333,7 +312,7 @@ export default function StandingsPage() {
                       isCurrentUser
                         ? 'bg-red-900/10 border-l-2 border-l-fedRed'
                         : ''
-                    } ${entry.isEliminated ? 'opacity-60' : ''} ${rank === 5 ? 'border-b-2 border-fedRed' : ''}`}
+                    } ${rank === 5 ? 'border-b-2 border-fedRed' : ''}`}
                   >
                     {/* Rank — sticky */}
                     <td className={`${STICKY_RANK_CLS} text-slate-400`}>{RANK_EMOJI[rank] ?? rank}</td>
@@ -348,17 +327,9 @@ export default function StandingsPage() {
                     </td>
                     {/* Total pts */}
                     <td className="py-1.5 px-2 whitespace-nowrap text-right font-mono text-xs font-bold text-fedRed">{(entry.totalPoints ?? 0).toFixed(2)}</td>
-                    {/* Status badge */}
-                    <td className="py-1.5 px-2 whitespace-nowrap text-center">
-                      {entry.isEliminated ? (
-                        <span className="text-red-400 bg-red-900/30 border border-red-500/30 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">Eliminated</span>
-                      ) : (
-                        <span className="text-green-400 bg-green-900/30 border border-green-500/30 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">Active</span>
-                      )}
-                    </td>
-                    {/* Today's survivor pick cell — skip E8 dates (handled in E8 block below) */}
-                    {todayDateKey !== null && !E8_DATE_KEYS.includes(todayDateKey) && (() => {
-                      const cellVal = gamesLoaded ? getPickForDate(entry, todayDateKey, games, now) : '🔒';
+                    {/* F4 survivor pick cell — fixed at 4/4/2026 */}
+                    {(() => {
+                      const cellVal = gamesLoaded ? getPickForDate(entry, F4_SURVIVOR_DATE_KEY, games, now) : '🔒';
                       if (cellVal === '🔒') {
                         return (
                           <td className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600 text-xs">🔒</td>
@@ -380,69 +351,6 @@ export default function StandingsPage() {
                         <td className={`py-1.5 px-2 whitespace-nowrap text-center ${cellClass}`}>
                           <span className={textClass}>{team}</span>
                         </td>
-                      );
-                    })()}
-                    {/* E8 #1 and E8 #2 columns — dedicated rendering for all entries */}
-                    {(() => {
-                      if (!gamesLoaded) {
-                        return (
-                          <>
-                            <td key="e8-1" className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600 text-xs">🔒</td>
-                            <td key="e8-2" className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600 text-xs">🔒</td>
-                          </>
-                        );
-                      }
-                      if (isPreE8Eliminated(entry)) {
-                        // Pre-E8 eliminated — completely empty cells
-                        return (
-                          <>
-                            <td key="e8-1" className="py-1.5 px-2 whitespace-nowrap text-center" />
-                            <td key="e8-2" className="py-1.5 px-2 whitespace-nowrap text-center" />
-                          </>
-                        );
-                      }
-                      const [pick1, pick2] = getE8Picks(entry, games);
-                      return (
-                        <>
-                          {([pick1, pick2] as Array<any | null>).map((pick, idx) => {
-                            if (!pick) {
-                              return (
-                                <td key={`e8-${idx + 1}`} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600">—</td>
-                              );
-                            }
-                            const game = games.find((g: any) => g.id === pick.gameId);
-                            const gt = game?.gameTime ?? null;
-                            const tipped = gt ? now >= new Date(gt) : (game?.isComplete ?? false);
-                            if (!tipped) {
-                              return (
-                                <td key={`e8-${idx + 1}`} className="py-1.5 px-2 whitespace-nowrap text-center text-slate-600 text-xs">🔒</td>
-                              );
-                            }
-                            const isWin = pick.result === 'win';
-                            const isLoss = pick.result === 'loss';
-                            return (
-                              <td
-                                key={`e8-${idx + 1}`}
-                                className="py-1.5 px-2 whitespace-nowrap text-center"
-                                style={{
-                                  backgroundColor: isWin
-                                    ? 'rgba(34, 197, 94, 0.15)'
-                                    : isLoss
-                                    ? 'rgba(220, 38, 38, 0.15)'
-                                    : undefined,
-                                }}
-                              >
-                                <span className={
-                                  isWin ? 'text-green-400 text-xs' :
-                                  isLoss ? 'text-red-400 text-xs line-through' :
-                                  'text-slate-300 text-xs'
-                                }>
-                                  {pick.team}
-                                </span>
-                              </td>
-                            );
-                          })}
-                        </>
                       );
                     })()}
                     {/* Final Four columns — lock emoji applies universally to ALL entrants (including current user)
